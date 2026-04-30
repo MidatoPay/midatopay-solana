@@ -179,8 +179,11 @@ router.get('/profile', authenticateHybrid, async (req, res, next) => {
 
 // Actualizar perfil (soporta Clerk y JWT)
 router.put('/profile', authenticateHybrid, [
-  body('name').optional().trim().isLength({ min: 2 }),
-  body('phone').optional().isMobilePhone()
+  body('name').optional().trim().isLength({ min: 2, max: 120 }),
+  body('phone')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isMobilePhone('any'),
 ], async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -195,8 +198,33 @@ router.put('/profile', authenticateHybrid, [
     const { name, phone } = req.body;
     const updateData = {};
 
-    if (name) updateData.name = name;
-    if (phone) updateData.phone = phone;
+    if (name !== undefined && String(name).trim().length >= 2) {
+      updateData.name = String(name).trim();
+    }
+    if (phone !== undefined) {
+      updateData.phone =
+        phone === '' || phone === null ? null : String(phone).trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      const existing = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          walletAddress: true,
+          walletCreatedAt: true,
+          updatedAt: true,
+        },
+      });
+      return res.json({
+        message: 'Sin cambios',
+        user: existing,
+      });
+    }
 
     const user = await prisma.user.update({
       where: { id: req.user.id },

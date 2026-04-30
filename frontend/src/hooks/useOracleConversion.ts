@@ -1,4 +1,4 @@
-// Hook para manejar conversiones ARS → USDC usando Oracle de Polygon
+// Hook: cotización ARS → USDC vía backend (oracle Solana/Anchor)
 import { useState } from 'react';
 
 interface OracleConversionResult {
@@ -7,11 +7,16 @@ interface OracleConversionResult {
   source: string;
 }
 
+/** Backend solo usa Solana; el parámetro `network` se normaliza a `solana`. */
+function normalizeOracleNetwork(_network: string): string {
+  return 'solana';
+}
+
 export function useOracleConversion() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Llamada al Oracle de Polygon a través del backend
+  // Cotización usando el oracle del backend (red por defecto: solana)
   const quoteARSToUSDC = async (amountARS: number): Promise<OracleConversionResult | null> => {
     if (!amountARS || amountARS <= 0) {
       return null;
@@ -21,8 +26,10 @@ export function useOracleConversion() {
     setError(null);
 
     try {
-      // Llamar al endpoint del backend que usa el Oracle de Polygon
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/oracle/quote/${amountARS}`);
+      const net = normalizeOracleNetwork('solana');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/oracle/quote/${amountARS}?network=${net}`
+      );
       
       if (!response.ok) {
         throw new Error('Error al consultar el Oracle');
@@ -39,10 +46,10 @@ export function useOracleConversion() {
       return {
         cryptoAmount: Number(cryptoAmount),
         exchangeRate: Number(exchangeRate),
-        source: source || 'POLYGON_ORACLE'
+        source: source || 'SOLANA_ANCHOR_ORACLE'
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error consultando Oracle de Polygon';
+      const errorMessage = err instanceof Error ? err.message : 'Error consultando el oracle';
       setError(errorMessage);
       console.error('Error calling Oracle:', err);
       return null;
@@ -52,7 +59,7 @@ export function useOracleConversion() {
   };
 
   // Conversión ARS → USDC usando Oracle según la red
-  const convertARSToCrypto = async (amountARS: number, targetCrypto: string, network: string = 'polygon'): Promise<OracleConversionResult | null> => {
+  const convertARSToCrypto = async (amountARS: number, targetCrypto: string, network: string = 'solana'): Promise<OracleConversionResult | null> => {
     if (targetCrypto !== 'USDC') {
       setError('Solo USDC está soportado');
       return null;
@@ -67,8 +74,10 @@ export function useOracleConversion() {
     setError(null);
 
     try {
-      // Llamar al endpoint del backend que usa el Oracle según la red
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/oracle/quote/${amountARS}?network=${network}`);
+      const net = normalizeOracleNetwork(network);
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/oracle/quote/${amountARS}?network=${net}`
+      );
       
       if (!response.ok) {
         throw new Error('Error al consultar el Oracle');

@@ -262,27 +262,25 @@ const authenticateHybrid = async (req, res, next) => {
       });
       
       if (!isLikelyJWT) {
-        // Intentar con Clerk primero usando la función verifyToken exportada
         try {
-          // Usar la función verifyToken exportada directamente
           const sessionToken = await verifyToken(token, {
-            secretKey: process.env.CLERK_SECRET_KEY
+            secretKey: process.env.CLERK_SECRET_KEY,
           });
-          
+
           if (sessionToken && sessionToken.sub) {
-            // Token de Clerk válido, continuar con autenticación Clerk completa
             console.log('✅ Token de Clerk válido, usando authenticateClerk');
             return authenticateClerk(req, res, next);
           }
         } catch (clerkError) {
-          // Token no es de Clerk o falló la verificación, continuar con JWT
-          console.log('⚠️ Token no es de Clerk o verificación falló, intentando con JWT...', clerkError.message);
+          console.error(
+            '⚠️ verifyToken (Clerk) falló; si el usuario entró con Google/Clerk, revisá CLERK_SECRET_KEY en backend/.env (misma instancia que el publishable key del frontend):',
+            clerkError.message
+          );
         }
       } else {
-        console.log('🔍 Token parece ser JWT, verificando directamente...');
+        console.log('🔍 Token parece JWT corto, saltando verifyToken Clerk');
       }
-      
-      // Si llegamos aquí, el token probablemente es JWT
+
       const jwtAuth = require('./auth').authenticateToken;
       return jwtAuth(req, res, next);
     } catch (error) {

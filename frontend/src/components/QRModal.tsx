@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { QrCode, Copy, Download, X, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -49,19 +48,25 @@ export function QRModal({
 
   if (!isOpen || !qrData) return null;
 
-  // Calcular el monto en crypto usando la tasa fija: $1,000 ARS = 1 USDT/USDC
-  const calculateCryptoAmount = (amountARS: number): number => {
-    // Tasa fija: 1 USDT/USDC = 1,000 ARS
-    return amountARS / 1000;
-  };
+  const cryptoType = qrData.paymentData.targetCrypto || 'USDC';
 
-  // Determinar el tipo de crypto (USDT)
-  const cryptoType = qrData.paymentData.targetCrypto || 'USDT';
-  
-  // Obtener el monto en crypto (usar el del backend si existe y es válido, sino calcularlo)
-  const cryptoAmount = qrData.paymentData.cryptoAmount && qrData.paymentData.cryptoAmount > 0
-    ? qrData.paymentData.cryptoAmount
-    : calculateCryptoAmount(qrData.paymentData.amountARS);
+  const cryptoAmount =
+    qrData.paymentData.cryptoAmount && qrData.paymentData.cryptoAmount > 0
+      ? qrData.paymentData.cryptoAmount
+      : qrData.paymentData.exchangeRate && qrData.paymentData.exchangeRate > 0
+        ? qrData.paymentData.amountARS / qrData.paymentData.exchangeRate
+        : qrData.paymentData.amountARS / 1000;
+
+  /** ARS por 1 token completo (oracle on-chain / misma fuente que el backend) */
+  const effectiveRate =
+    qrData.paymentData.exchangeRate && qrData.paymentData.exchangeRate > 0
+      ? qrData.paymentData.exchangeRate
+      : qrData.paymentData.amountARS / Math.max(cryptoAmount, 1e-12);
+
+  const rateFormatted = effectiveRate.toLocaleString(getLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const handleCopyQR = async () => {
     try {
@@ -87,132 +92,118 @@ export function QRModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
       <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.8 }}
-        className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
-        style={{ backgroundColor: '#ffffff', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 12 }}
+        className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl max-h-[92vh] overflow-y-auto"
+        style={{ fontFamily: 'Kufam, sans-serif', boxShadow: '0 20px 40px rgba(0,0,0,0.12)' }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" 
-                 style={{ background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)' }}>
-              <QrCode className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold" style={{ color: '#1a1a1a', fontFamily: 'Kufam, sans-serif' }}>
-                {t.dashboard.createPayment.qrModal.title}
-              </h2>
-              <p className="text-sm" style={{ color: '#5d5d5d', fontFamily: 'Kufam, sans-serif' }}>
-                {t.dashboard.createPayment.qrModal.shareQR}
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="p-2"
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          aria-label={t.dashboard.createPayment.qrModal.close}
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="pt-1 text-center">
+          <div
+            className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl"
+            style={{ background: 'linear-gradient(135deg, #fe6c1c 0%, #fe9c42 100%)' }}
           >
-            <X className="w-5 h-5" />
-          </Button>
+            <QrCode className="h-5 w-5 text-white" />
+          </div>
+          <h2 className="text-lg font-bold text-[#1a1a1a]">{t.dashboard.createPayment.qrModal.title}</h2>
+          <p className="mt-0.5 text-xs text-gray-500">{t.dashboard.createPayment.qrModal.shareQR}</p>
         </div>
 
-        {/* Contenido del QR */}
-        <div className="text-center space-y-6">
-          {/* QR Code */}
-          <div className="bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-200">
-            <img
-              src={qrData.qrCodeImage}
-              alt={t.dashboard.createPayment.qrModal.paymentQRCode}
-              className="w-64 h-64 mx-auto"
-            />
-            
-            {refreshing && (
-              <div className="mt-4 p-3 rounded-lg" style={{ backgroundColor: 'rgba(254, 108, 28, 0.1)', border: '1px solid rgba(254, 108, 28, 0.2)' }}>
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-orange-200 border-t-orange-500 animate-spin"></div>
-                  <p className="text-sm" style={{ color: '#fe6c1c', fontFamily: 'Kufam, sans-serif' }}>
-                    {t.dashboard.createPayment.qrModal.generatingNewQR}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          {/* Información del pago */}
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold" style={{ color: '#1a1a1a', fontFamily: 'Kufam, sans-serif' }}>
-              {qrData.paymentData.merchantName}
-            </h3>
-            <p className="text-2xl font-bold" style={{ color: '#1a1a1a', fontFamily: 'Kufam, sans-serif' }}>
-              ${qrData.paymentData.amountARS.toLocaleString(getLocale())} ARS
-            </p>
-            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-              <p className="text-sm text-blue-800" style={{ fontFamily: 'Kufam, sans-serif' }}>
-                <span className="font-semibold">{t.dashboard.createPayment.qrModal.youWillReceive}</span> {cryptoAmount.toFixed(6)} {cryptoType}
-              </p>
-              <p className="text-xs text-blue-600 mt-1" style={{ fontFamily: 'Kufam, sans-serif' }}>
-                {cryptoType === 'USDC' ? '$1,000 ARS = 1 USDC' : t.dashboard.createPayment.exchangeRate}
-              </p>
+        <div className="mt-5 rounded-xl bg-[#fff8f4] p-4 ring-1 ring-[rgba(254,108,28,0.12)]">
+          <img
+            src={qrData.qrCodeImage}
+            alt={t.dashboard.createPayment.qrModal.paymentQRCode}
+            className="mx-auto h-52 w-52 object-contain"
+          />
+          {refreshing && (
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-[#fe6c1c]">
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-orange-200 border-t-[#fe6c1c]" />
+              {t.dashboard.createPayment.qrModal.generatingNewQR}
             </div>
-          </div>
-
-          {/* Botones de acción */}
-          <div className="flex space-x-3">
-            <Button
-              variant="outline"
-              className="flex-1 h-12 rounded-xl"
-              onClick={handleCopyQR}
-              disabled={copied}
-              style={{ fontFamily: 'Kufam, sans-serif' }}
-            >
-              <Copy className="w-4 h-4 mr-2" />
-              {copied ? t.dashboard.createPayment.qrModal.copied : t.dashboard.createPayment.qrModal.copyQR}
-            </Button>
-            <Button
-              className="flex-1 h-12 rounded-xl"
-              style={{ backgroundColor: '#fe6c1c', color: '#ffffff', fontFamily: 'Kufam, sans-serif' }}
-              onClick={handleDownloadQR}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              {t.dashboard.createPayment.qrModal.download}
-            </Button>
-          </div>
-
-          {/* Botón refrescar QR */}
-          {onRefreshQR && (
-            <Button
-              variant="outline"
-              className="w-full h-12 rounded-xl"
-              onClick={onRefreshQR}
-              disabled={refreshing}
-              style={{ fontFamily: 'Kufam, sans-serif' }}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? t.dashboard.createPayment.qrModal.refreshing : t.dashboard.createPayment.qrModal.refreshQR}
-            </Button>
           )}
+        </div>
 
-          {/* Información adicional */}
-          <div className="text-xs space-y-1" style={{ color: '#5d5d5d', fontFamily: 'Kufam, sans-serif' }}>
-            <p>{t.dashboard.createPayment.qrModal.sessionID} {qrData.paymentData.sessionId}</p>
-            <p>{t.dashboard.createPayment.qrModal.generated} {new Date().toLocaleString(getLocale())}</p>
+        <div className="mt-5 space-y-1 text-center">
+          <p className="text-sm text-gray-600">{qrData.paymentData.merchantName}</p>
+          <p className="text-2xl font-bold tracking-tight text-[#1a1a1a]">
+            ${qrData.paymentData.amountARS.toLocaleString(getLocale())}{' '}
+            <span className="text-base font-semibold text-gray-500">ARS</span>
+          </p>
+        </div>
+
+        <div
+          className="mt-4 rounded-xl px-3 py-3 text-left text-sm"
+          style={{ background: 'rgba(254, 108, 28, 0.06)', border: '1px solid rgba(254, 108, 28, 0.14)' }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-600">{t.dashboard.createPayment.qrModal.youWillReceive}</span>
+            <span className="font-semibold tabular-nums" style={{ color: '#2775CA' }}>
+              {cryptoAmount.toFixed(6)} {cryptoType}
+            </span>
           </div>
+          <p className="mt-1.5 text-xs text-gray-500">
+            {t.dashboard.createPayment.exchangeRateLabel}: ${rateFormatted} ARS = 1 {cryptoType}
+          </p>
+        </div>
 
-          {/* Botón cerrar */}
+        <div className="mt-5 grid grid-cols-2 gap-2">
           <Button
+            type="button"
             variant="outline"
-            className="w-full h-12 rounded-xl"
-            onClick={onClose}
-            style={{ fontFamily: 'Kufam, sans-serif' }}
+            className="h-10 rounded-xl border-gray-200 text-sm"
+            onClick={handleCopyQR}
+            disabled={copied}
           >
-            {t.dashboard.createPayment.qrModal.close}
+            <Copy className="mr-1.5 h-4 w-4" />
+            {copied ? t.dashboard.createPayment.qrModal.copied : t.dashboard.createPayment.qrModal.copyQR}
+          </Button>
+          <Button
+            type="button"
+            className="h-10 rounded-xl text-sm"
+            style={{ backgroundColor: '#fe6c1c', color: '#fff' }}
+            onClick={handleDownloadQR}
+          >
+            <Download className="mr-1.5 h-4 w-4" />
+            {t.dashboard.createPayment.qrModal.download}
           </Button>
         </div>
+
+        {onRefreshQR && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="mt-2 h-9 w-full text-xs text-gray-500 hover:text-[#fe6c1c]"
+            onClick={onRefreshQR}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? t.dashboard.createPayment.qrModal.refreshing : t.dashboard.createPayment.qrModal.refreshQR}
+          </Button>
+        )}
+
+        <p className="mt-4 truncate text-center text-[11px] text-gray-400" title={qrData.paymentData.sessionId}>
+          {t.dashboard.createPayment.qrModal.sessionID} {qrData.paymentData.sessionId}
+        </p>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 h-10 w-full rounded-xl border-gray-200 text-sm"
+          onClick={onClose}
+        >
+          {t.dashboard.createPayment.qrModal.close}
+        </Button>
       </motion.div>
     </div>
   );

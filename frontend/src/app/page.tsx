@@ -301,26 +301,22 @@ export default function HomePage() {
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                     <span className="text-lg sm:text-xl md:text-2xl font-semibold whitespace-nowrap flex-shrink-0" style={{ fontFamily: 'Kufam, sans-serif', color: '#2C2C2C' }}>{t.homepage.hero.receive}</span>
                     <div className="flex items-center gap-2 sm:gap-3 flex-nowrap">
-                      {/* USDT Badge */}
+                      {/* USDC Badge */}
                       <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl flex-shrink-0" style={{ 
-                        background: 'linear-gradient(135deg, rgba(0,147,147,0.12) 0%, rgba(0,147,147,0.06) 100%)', 
-                        border: '1px solid rgba(0,147,147,0.25)',
-                        boxShadow: '0 4px 12px rgba(0,147,147,0.15)'
+                        background: 'linear-gradient(135deg, rgba(39,117,202,0.12) 0%, rgba(39,117,202,0.06) 100%)', 
+                        border: '1px solid rgba(39,117,202,0.25)',
+                        boxShadow: '0 4px 12px rgba(39,117,202,0.15)'
                       }}>
-                        <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#009393' }}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" className="sm:w-[16px] sm:h-[16px]">
-                            <g clipPath="url(#USDT_home_1)">
-                            <path fill="#009393" d="M24 0H0v24h24z"/>
-                            <path fill="#fff" d="m12 18.4-8-7.892L7.052 5.6h9.896L20 10.508zm.8-7.2v-.976c1.44.072 2.784.352 3.2.716-.484.424-2.216.732-4 .732s-3.516-.308-4-.732c.412-.364 1.76-.64 3.2-.72v.98zM8 10.936v.588c.412.364 1.756.64 3.2.72V14.4h1.6v-2.16c1.44-.072 2.788-.352 3.2-.716v-1.172c-.412-.364-1.76-.644-3.2-.72V8.8h2.4V7.6H8.8v1.2h2.4v.832c-1.444.076-2.788.356-3.2.72z"/>
-                          </g>
-                          <defs>
-                              <clipPath id="USDT_home_1">
-                              <path fill="#fff" d="M0 0h24v24H0z"/>
-                            </clipPath>
-                          </defs>
-                        </svg>
+                        <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: '#2775CA' }}>
+                          <Image
+                            src="/usdc.png"
+                            alt=""
+                            width={14}
+                            height={14}
+                            className="object-contain sm:w-4 sm:h-4"
+                          />
                         </div>
-                        <span className="text-sm sm:text-base font-bold whitespace-nowrap" style={{ color: '#009393', fontFamily: 'Kufam, sans-serif' }}>USDT</span>
+                        <span className="text-sm sm:text-base font-bold whitespace-nowrap" style={{ color: '#2775CA', fontFamily: 'Kufam, sans-serif' }}>USDC</span>
                       </div>
 
                       {/* BTC Badge */}
@@ -449,7 +445,7 @@ export default function HomePage() {
               
               {/* Graphics */}
               <div className="absolute top-2 right-2">
-                <Image src="/par-logos.png" alt="Argentina y USDT" width={135} height={80} className="rounded-lg" />
+                <Image src="/par-logos.png" alt="Argentina y USDC" width={135} height={80} className="rounded-lg" />
                 </div>
             </motion.div>
 

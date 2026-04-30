@@ -2,24 +2,86 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import DashboardLayout from '@/components/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Wallet, DollarSign } from 'lucide-react'
+import Link from 'next/link'
+import toast from 'react-hot-toast'
+import { useAuth as useClerkAuth } from '@clerk/nextjs'
+import { useAuthStore } from '@/store/auth'
+
+function isEvmAddress(address: string) {
+  return /^0x[a-fA-F0-9]{40}$/.test(address)
+}
+
+function isLikelySolanaAddress(address: string) {
+  if (address.length < 32 || address.length > 44) return false
+  return /^[1-9A-HJ-NP-Za-km-z]+$/.test(address)
+}
+
+function isAcceptedWalletAddress(address: string) {
+  return isEvmAddress(address) || isLikelySolanaAddress(address)
+}
+
+const font = { fontFamily: 'Kufam, sans-serif' } as const
 
 export default function BilleteraPage() {
-  const { user, isLoading: profileLoading } = useUserProfile()
+  const { user, isLoading: profileLoading, reloadProfile } = useUserProfile()
   const { t } = useLanguage()
-  
+  const { getToken, isSignedIn, isLoaded: isClerkAuthLoaded } = useClerkAuth()
+  const jwtToken = useAuthStore(s => s.token)
+  const isJwtAuthenticated = useAuthStore(s => s.isAuthenticated)
+
+  const [creatingWallet, setCreatingWallet] = useState(false)
+  const [invalidStoredAddress, setInvalidStoredAddress] = useState(false)
+
   const [merchantWallet, setMerchantWallet] = useState({
     isConnected: false,
     address: null as string | null,
     balance: null as string | null,
-    isLoading: true
+    isLoading: true,
   })
 
-  // Obtener wallet desde el perfil del usuario (base de datos)
+  const getBearerToken = async (): Promise<string | null> => {
+    if (jwtToken && isJwtAuthenticated) return jwtToken
+    if (!isClerkAuthLoaded || !isSignedIn) return null
+    try {
+      return await getToken()
+    } catch {
+      return null
+    }
+  }
+
+  const handleCreateWallet = async () => {
+    try {
+      setCreatingWallet(true)
+      const token = await getBearerToken()
+      if (!token) {
+        throw new Error('No se pudo obtener el token de autenticación')
+      }
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+      const response = await fetch(`${apiUrl}/api/auth/create-wallet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }))
+        throw new Error(errorData.message || errorData.error || 'Error al crear la wallet')
+      }
+      toast.success('Wallet creada')
+      await reloadProfile()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al crear la wallet')
+    } finally {
+      setCreatingWallet(false)
+    }
+  }
+
   useEffect(() => {
     if (profileLoading) {
       setMerchantWallet(prev => ({ ...prev, isLoading: true }))
@@ -28,69 +90,108 @@ export default function BilleteraPage() {
 
     if (user?.walletAddress) {
       const walletAddress = user.walletAddress
-      
-      // Validar que sea una dirección de Polygon (42 caracteres)
-      if (walletAddress.length === 42) {
-        console.log('✅ Wallet obtenida desde BD (Polygon):', walletAddress)
+
+      if (isAcceptedWalletAddress(walletAddress)) {
+        const label = isEvmAddress(walletAddress) ? 'EVM' : 'Solana'
+        console.log(`Wallet obtenida desde BD (${label}):`, walletAddress)
+        setInvalidStoredAddress(false)
         setMerchantWallet({
           isConnected: true,
           address: walletAddress,
           balance: null,
-          isLoading: false
+          isLoading: false,
         })
-        
-        // Limpiar localStorage si tiene una wallet incompatible
+
         try {
           const localWallet = localStorage.getItem('midatopay_merchant_wallet')
           if (localWallet) {
             const parsed = JSON.parse(localWallet)
-            if (parsed.address && parsed.address.length !== 42) {
-              console.log('🧹 Limpiando wallet de localStorage (dirección incompatible)')
+            if (parsed.address && !isAcceptedWalletAddress(String(parsed.address))) {
               localStorage.removeItem('midatopay_merchant_wallet')
             }
           }
-        } catch (e) {
-          // Ignorar errores al limpiar localStorage
+        } catch {
+          // ignore
         }
       } else {
-        console.warn('⚠️ Dirección de wallet inválida (no es Polygon):', walletAddress)
-        setMerchantWallet(prev => ({ ...prev, isLoading: false }))
+        console.warn('Dirección de wallet no reconocida (ni Solana ni EVM):', walletAddress)
+        setInvalidStoredAddress(true)
+        setMerchantWallet(prev => ({ ...prev, isLoading: false, isConnected: false, address: null }))
       }
     } else {
-      console.log('⚠️ Usuario no tiene wallet en BD')
+      setInvalidStoredAddress(false)
       setMerchantWallet(prev => ({ ...prev, isLoading: false }))
     }
   }, [user?.walletAddress, profileLoading])
 
-  // Mostrar mensaje si no hay wallet conectada
   if (!merchantWallet.isConnected && !merchantWallet.isLoading) {
     return (
       <DashboardLayout pageTitle={t.dashboard.sidebar.wallet}>
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-teal-50 flex items-center justify-center p-4">
-          <Card className="max-w-md">
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-50/80 to-neutral-50 p-4">
+          <Card className="max-w-md border border-neutral-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Wallet className="w-5 h-5" />
-                <span>No Wallet Found</span>
+              <CardTitle className="flex items-center gap-3 text-left" style={font}>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-100 p-1.5">
+                  <Image
+                    src="/solana.png"
+                    alt="Solana"
+                    width={36}
+                    height={36}
+                    className="h-8 w-8 object-contain"
+                  />
+                </span>
+                <span className="leading-snug">
+                  {invalidStoredAddress
+                    ? t.dashboard.walletPage.invalidStoredAddress
+                    : t.dashboard.walletPage.emptyTitle}
+                </span>
               </CardTitle>
               <CardDescription>
-                Your wallet will be created automatically when you generate your first payment QR code.
+                {invalidStoredAddress ? '' : t.dashboard.walletPage.emptyDescription}
               </CardDescription>
             </CardHeader>
+            {!invalidStoredAddress && (
+              <CardContent className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={handleCreateWallet}
+                  disabled={creatingWallet}
+                  className="w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-60"
+                  style={{ fontFamily: 'Kufam, sans-serif' }}
+                >
+                  {creatingWallet ? t.dashboard.walletPage.creatingWallet : t.dashboard.walletPage.createWallet}
+                </button>
+                <Link
+                  href="/dashboard/create-payment"
+                  className="w-full rounded-lg border border-orange-200 bg-white px-4 py-2 text-center text-sm font-medium text-orange-600 hover:bg-orange-50"
+                  style={{ fontFamily: 'Kufam, sans-serif' }}
+                >
+                  {t.dashboard.walletPage.goToCreatePayment}
+                </Link>
+              </CardContent>
+            )}
           </Card>
         </div>
       </DashboardLayout>
     )
   }
 
-  // Mostrar loading mientras se carga
   if (merchantWallet.isLoading) {
     return (
       <DashboardLayout pageTitle={t.dashboard.sidebar.wallet}>
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-teal-50 flex items-center justify-center p-4">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Cargando wallet...</p>
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-orange-50/80 to-neutral-50 p-4">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Image
+              src="/solana.png"
+              alt="Solana"
+              width={40}
+              height={40}
+              className="h-10 w-10 object-contain opacity-90"
+            />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+            <p className="text-neutral-600" style={font}>
+              {t.dashboard.loading}
+            </p>
           </div>
         </div>
       </DashboardLayout>
@@ -99,58 +200,90 @@ export default function BilleteraPage() {
 
   return (
     <DashboardLayout pageTitle={t.dashboard.sidebar.wallet}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Sección de Información de Wallet */}
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
         {merchantWallet.isConnected && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="mb-8"
+            transition={{ delay: 0.08 }}
           >
-            <Card style={{ 
-              backgroundColor: 'rgba(16,185,129,0.05)', 
-              borderColor: 'rgba(16,185,129,0.2)', 
-              boxShadow: '0 10px 30px rgba(16,185,129,0.1)', 
-              backdropFilter: 'blur(10px)' 
-            }}>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#10b981' }}>
-                    <Wallet className="w-4 h-4 text-white" />
+            <Card className="overflow-hidden border border-neutral-200 bg-white shadow-sm">
+              <CardHeader className="space-y-1 pb-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-neutral-100 p-2">
+                    <Image
+                      src="/solana.png"
+                      alt="Solana"
+                      width={48}
+                      height={48}
+                      className="h-10 w-10 object-contain"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-xl text-neutral-900" style={font}>
+                      {t.dashboard.walletInformation}
+                    </CardTitle>
+                    <CardDescription className="mt-1.5 text-sm leading-relaxed text-neutral-600" style={font}>
+                      {t.dashboard.walletDescription}
+                    </CardDescription>
                   </div>
-                  <span style={{ color: '#1a1a1a', fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>{t.dashboard.walletInformation}</span>
-                </CardTitle>
-                <CardDescription style={{ color: '#5d5d5d', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>
-                  {t.dashboard.walletDescription}
-                </CardDescription>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Dirección */}
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 className="font-semibold text-green-800 mb-2" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>{t.dashboard.address}</h4>
-                    <p className="text-sm font-mono text-green-800 break-all" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+                    <h4 className="mb-2 text-sm font-semibold text-neutral-800" style={font}>
+                      {t.dashboard.address}
+                    </h4>
+                    <p
+                      className="break-all font-mono text-sm leading-relaxed text-neutral-900"
+                      style={font}
+                    >
                       {merchantWallet.address}
                     </p>
-                    <p className="text-xs text-green-600 mt-1" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>{t.dashboard.yourWalletAddress}</p>
+                    <p className="mt-2 text-xs text-neutral-500" style={font}>
+                      {t.dashboard.yourWalletAddress}
+                    </p>
                   </div>
-                  
-                  {/* Red */}
-                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                    <h4 className="font-semibold text-purple-800 mb-2" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>{t.dashboard.network}</h4>
-                    <p className="text-lg font-bold text-red-600" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>Avalanche</p>
-                    <p className="text-sm text-purple-700" style={{ fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>Mainnet</p>
+
+                  <div
+                    className={`rounded-xl border p-4 ${
+                      merchantWallet.address && isEvmAddress(merchantWallet.address)
+                        ? 'border-neutral-200 bg-neutral-50'
+                        : 'border-violet-200/80 bg-violet-50/50'
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      {!(merchantWallet.address && isEvmAddress(merchantWallet.address)) && (
+                        <Image
+                          src="/solana.png"
+                          alt=""
+                          width={20}
+                          height={20}
+                          className="h-5 w-5 object-contain opacity-90"
+                        />
+                      )}
+                      <h4 className="text-sm font-semibold text-neutral-800" style={font}>
+                        {t.dashboard.network}
+                      </h4>
+                    </div>
+                    <p className="text-lg font-bold text-neutral-900" style={font}>
+                      {merchantWallet.address && isEvmAddress(merchantWallet.address)
+                        ? 'EVM'
+                        : t.dashboard.walletPage.networkSolanaTestnet}
+                    </p>
+                    <p className="mt-1 text-sm text-neutral-600" style={font}>
+                      {merchantWallet.address && isEvmAddress(merchantWallet.address)
+                        ? '—'
+                        : t.dashboard.testnet}
+                    </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
         )}
-
-        {/* Sección ChipiPay eliminada */}
       </div>
     </DashboardLayout>
   )
 }
-

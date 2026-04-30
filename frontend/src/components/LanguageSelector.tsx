@@ -57,7 +57,8 @@ export default function LanguageSelector() {
           alt={currentLanguage.name}
           width={20}
           height={15}
-          className="object-contain rounded-sm"
+          className="h-4 w-5 flex-shrink-0 object-contain rounded-sm"
+          sizes="20px"
         />
         <span className="text-sm font-medium text-white uppercase hidden sm:inline">
           {currentLanguage.code}
@@ -96,7 +97,8 @@ export default function LanguageSelector() {
                 alt={lang.name}
                 width={20}
                 height={15}
-                className="object-contain rounded-sm flex-shrink-0"
+                className="h-4 w-5 flex-shrink-0 object-contain rounded-sm"
+                sizes="20px"
               />
               <span className="text-sm font-medium text-white flex-1">{lang.name}</span>
               <span className="text-xs text-gray-300 uppercase">{lang.code}</span>

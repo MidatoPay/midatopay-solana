@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth as useClerkAuth } from '@clerk/nextjs'
+import { useClerkSafe } from '@/hooks/useClerkSafe'
 import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,7 +13,7 @@ import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { useAuth } from '@/store/auth'
 import { ArrowLeft, QrCode, DollarSign } from 'lucide-react'
 import Link from 'next/link'
@@ -19,12 +21,18 @@ import { useLanguage } from '@/contexts/LanguageContext'
 
 // Importar nuestros nuevos componentes y hooks
 import { midatoPayAPI } from '@/lib/midatopay-api'
+import { getPreferredBearerToken } from '@/lib/auth-session'
 import { QRModal } from '@/components/QRModal'
 import { useOracleConversion } from '@/hooks/useOracleConversion'
 
 export default function CreatePaymentPage() {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, hasHydrated } = useAuth()
+  const { isSignedIn, isLoaded: isClerkLoaded, getToken } = useClerkAuth()
+  const { isConfigured: isClerkConfigured } = useClerkSafe()
   const router = useRouter()
+
+  const isAuthenticatedAny =
+    isAuthenticated || (isClerkConfigured && isClerkLoaded && isSignedIn)
   const { t, language } = useLanguage()
   const [isCreating, setIsCreating] = useState(false)
   const [showQRModal, setShowQRModal] = useState(false)
@@ -54,13 +62,12 @@ export default function CreatePaymentPage() {
   
   // Hooks del sistema actual (USDC)
   const { convertARSToCrypto, loading: oracleLoading } = useOracleConversion()
-  const useChipiPay = false
-  const chipiPayConverting = false
-  
+
   const [cryptoAmount, setCryptoAmount] = useState<number | null>(null)
   const [exchangeRate, setExchangeRate] = useState<number | null>(null)
   const [percentage, setPercentage] = useState<number>(100) // Porcentaje predeterminado 100%
-  const [selectedNetwork, setSelectedNetwork] = useState<'avalanche'>('avalanche')
+  /** Red de liquidación: backend MidatoPay + oracle solo soportan Solana. */
+  const paymentNetwork = 'solana' as const
 
   // Calcular montos según el porcentaje seleccionado
   const adjustedCryptoAmount = cryptoAmount !== null && watchedAmount 
@@ -81,7 +88,7 @@ export default function CreatePaymentPage() {
     const timeoutId = setTimeout(async () => {
       try {
         // Usar sistema actual para conversión ARS → USDC usando Oracle según la red seleccionada
-        const result = await convertARSToCrypto(watchedAmount, 'USDC', selectedNetwork)
+        const result = await convertARSToCrypto(watchedAmount, 'USDC', paymentNetwork)
         if (result) {
           setCryptoAmount(result.cryptoAmount)
           setExchangeRate(result.exchangeRate)
@@ -97,23 +104,41 @@ export default function CreatePaymentPage() {
     }, 1000) // Debounce de 1 segundo
 
     return () => clearTimeout(timeoutId)
-  }, [watchedAmount, convertARSToCrypto, selectedNetwork])
+  }, [watchedAmount, convertARSToCrypto, paymentNetwork])
 
+  useEffect(() => {
+    if (!hasHydrated) return
+    if (isClerkConfigured && !isClerkLoaded) return
+    if (!isAuthenticatedAny) {
+      router.replace('/auth/login')
+    }
+  }, [hasHydrated, isClerkConfigured, isClerkLoaded, isAuthenticatedAny, router])
+
+  const resolveBearerToken = (): Promise<string | null> =>
+    getPreferredBearerToken(getToken)
 
   const onSubmit = async (data: CreatePaymentForm) => {
-    if (!isAuthenticated) {
+    if (!isAuthenticatedAny) {
+      toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
+      return
+    }
+
+    const bearer = await resolveBearerToken()
+    if (!bearer) {
       toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
       return
     }
 
     setIsCreating(true)
     try {
-      // Usar sistema actual para generar QR
-      const result = await midatoPayAPI.generatePaymentQR({
-        amountARS: data.amount,
-        targetCrypto: 'USDC',
-        network: selectedNetwork
-      })
+      const result = await midatoPayAPI.generatePaymentQR(
+        {
+          amountARS: data.amount,
+          targetCrypto: 'USDC',
+          network: paymentNetwork,
+        },
+        bearer
+      )
 
       if (result.success) {
         setQrData(result)
@@ -129,12 +154,20 @@ export default function CreatePaymentPage() {
     }
   }
 
-  // Evitar render en servidor si no está autenticado
-  if (typeof window === 'undefined' || !isAuthenticated) {
-    if (typeof window !== 'undefined') {
-      router.push('/auth/login')
-    }
-    return null
+  if (!hasHydrated || (isClerkConfigured && !isClerkLoaded)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fff5f0 0%, #f7f7f6 100%)' }}>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticatedAny) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fff5f0 0%, #f7f7f6 100%)' }}>
+        <p className="text-gray-600">Redirigiendo...</p>
+      </div>
+    )
   }
 
   return (
@@ -144,215 +177,166 @@ export default function CreatePaymentPage() {
         fontFamily: 'Kufam, sans-serif'
       }}
     >
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-orange-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/dashboard" className="flex items-center space-x-2 text-gray-600 hover:text-orange-600 transition-colors">
-                <ArrowLeft className="w-5 h-5" />
-                <span className="font-medium">{t.dashboard.createPayment.backToDashboard}</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              <QrCode className="w-6 h-6" style={{ color: '#fe6c1c' }} />
-              <h1 className="text-xl font-bold" style={{ color: '#1a1a1a' }}>{t.dashboard.createPayment.title}</h1>
-            </div>
-          </div>
+      <div className="sticky top-0 z-10 border-b border-orange-100/80 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-sm text-gray-500 transition-colors hover:text-[#fe6c1c]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t.dashboard.createPayment.backToDashboard}
+          </Link>
+          <QrCode className="h-5 w-5 text-[#fe6c1c]" aria-hidden />
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-center">
-          
-          {/* Formulario */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-2xl"
+      <div className="mx-auto max-w-lg px-4 pb-12 pt-8">
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <h1 className="text-2xl font-bold text-[#1a1a1a]">{t.dashboard.createPayment.title}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t.dashboard.createPayment.completeDetails}</p>
+
+          <Card
+            className="mt-8 border-0 shadow-md"
+            style={{
+              background: 'rgba(255, 255, 255, 0.95)',
+              border: '1px solid rgba(254, 108, 28, 0.08)',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.04)',
+            }}
           >
-            <Card className="shadow-lg border-0"
-              style={{ 
-                background: 'rgba(255, 255, 255, 0.9)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(254, 108, 28, 0.1)'
-              }}
-            >
-              <CardHeader className="text-center pb-6">
-                <CardTitle className="text-2xl font-bold" style={{ color: '#1a1a1a' }}>
-                  {t.dashboard.createPayment.paymentDetails}
-                </CardTitle>
-                <CardDescription className="text-base" style={{ color: '#5d5d5d' }}>
-                  {t.dashboard.createPayment.completeDetails}
-                </CardDescription>
-              </CardHeader>
-              
-              <CardContent className="space-y-6">
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                  
-                  
-                  {/* Monto */}
-                  <div className="space-y-2">
-                    <Label htmlFor="amount" style={{ color: '#1a1a1a', fontWeight: '500' }}>{t.dashboard.createPayment.amountInARS}</Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: '#fe6c1c' }} />
-                      <img 
-                        src="/logo-arg.png" 
-                        alt="ARS" 
-                        className="absolute right-4 top-1/2 transform -translate-y-1/2 w-6 h-6"
-                      />
-                      <Input
-                        id="amount"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        {...register('amount', { valueAsNumber: true })}
-                        className={`pl-12 pr-12 h-12 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-offset-2 ${errors.amount ? 'border-red-500' : ''}`}
-                        style={{ 
-                          backgroundColor: 'rgba(247, 247, 246, 0.8)', 
-                          border: '1px solid rgba(254,108,28,0.2)',
-                          color: '#1a1a1a'
-                        }}
-                      />
-                    </div>
-                    {errors.amount && (
-                      <p className="text-sm text-red-500">{errors.amount.message}</p>
-                    )}
+            <CardContent className="p-6 sm:p-7">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="amount" className="text-sm font-medium text-[#1a1a1a]">
+                    {t.dashboard.createPayment.amountInARS}
+                  </Label>
+                  <div className="relative">
+                    <DollarSign
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#fe6c1c]"
+                      aria-hidden
+                    />
+                    <img
+                      src="/logo-arg.png"
+                      alt=""
+                      className="pointer-events-none absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 opacity-90"
+                    />
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      {...register('amount', { valueAsNumber: true })}
+                      className={`h-11 rounded-xl border pl-10 pr-11 text-base ${errors.amount ? 'border-red-400' : 'border-orange-100'}`}
+                      style={{
+                        backgroundColor: '#fafafa',
+                        color: '#1a1a1a',
+                      }}
+                    />
                   </div>
+                  {errors.amount && <p className="text-xs text-red-500">{errors.amount.message}</p>}
+                </div>
 
-                  {/* Barra de Porcentajes */}
-                  {watchedAmount && watchedAmount > 0 && (
-                    <div className="space-y-3">
-                      <Label style={{ color: '#1a1a1a', fontWeight: '500' }}>{t.dashboard.createPayment.conversionPercentage}</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((pct) => (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => setPercentage(pct)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                              percentage === pct
-                                ? 'scale-105 shadow-md'
-                                : 'hover:scale-105'
-                            }`}
-                            style={{
-                              backgroundColor: percentage === pct ? '#fe6c1c' : 'rgba(247, 247, 246, 0.8)',
-                              color: percentage === pct ? '#ffffff' : '#1a1a1a',
-                              border: percentage === pct ? '2px solid #fe6c1c' : '1px solid rgba(254,108,28,0.2)',
-                              fontFamily: 'Kufam, sans-serif',
-                              fontWeight: percentage === pct ? 600 : 500
-                            }}
-                          >
-                            {pct}%
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Cripto a Recibir */}
+                {watchedAmount && watchedAmount > 0 && (
                   <div className="space-y-2">
-                    <Label htmlFor="receiveCurrency" style={{ color: '#1a1a1a', fontWeight: '500' }}>{t.dashboard.createPayment.cryptoToReceive}</Label>
-                    <div className="relative">
-                      <div className="w-full h-12 px-4 py-3 rounded-xl flex items-center justify-between"
-                        style={{ 
-                          backgroundColor: 'rgba(247, 247, 246, 0.8)', 
-                          border: '1px solid rgba(254,108,28,0.2)',
-                          color: '#1a1a1a'
-                        }}
-                      >
-                        <div className="flex items-center">
-                          <img 
-                            src="/usdc.png" 
-                            alt="USDC" 
-                            className="w-6 h-6 rounded-full mr-3"
-                          />
-                          <span className="font-medium">USDC (USD Coin)</span>
-                        </div>
-                        <span className="text-sm font-semibold" style={{ color: oracleLoading ? '#8B8B8B' : '#2775CA' }}>
-                          {oracleLoading ? '...' : adjustedCryptoAmount !== null ? `${adjustedCryptoAmount.toFixed(6)} USDC` : '--'}
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-[#1a1a1a]">
+                        {t.dashboard.createPayment.conversionPercentage}
+                      </span>
+                      <span className="font-semibold tabular-nums text-[#fe6c1c]">{percentage}%</span>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-xs" style={{ color: '#5d5d5d' }}>
-                        {t.dashboard.createPayment.oracleDescription}
-                      </p>
-                      <div className="flex items-center space-x-2 px-3 py-2 rounded-lg" style={{ 
-                        backgroundColor: 'rgba(254, 108, 28, 0.05)', 
-                        border: '1px solid rgba(254,108,28,0.15)' 
-                      }}>
-                        <svg className="w-4 h-4" style={{ color: '#fe6c1c' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <p className="text-xs font-medium" style={{ color: '#fe6c1c', fontFamily: 'Kufam, sans-serif' }}>
-                          {oracleLoading || !exchangeRate 
-                            ? t.dashboard.createPayment.loadingRate || 'Obteniendo tipo de cambio...' 
-                            : `${t.dashboard.createPayment.exchangeRateLabel || 'Tipo de cambio'}: $${exchangeRate.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS = 1 USDC`}
-                        </p>
-                      </div>
-                    </div>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      step={10}
+                      value={percentage}
+                      onChange={(e) => setPercentage(Number(e.target.value))}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-full bg-orange-100 accent-[#fe6c1c]"
+                      aria-label={t.dashboard.createPayment.conversionPercentage}
+                    />
                   </div>
+                )}
 
-                  {/* Información del porcentaje restante en ARS */}
-                  {percentage < 100 && remainingARSAmount !== null && watchedAmount && (
-                    <div className="p-4 rounded-xl" style={{ 
-                      backgroundColor: 'rgba(254, 108, 28, 0.05)', 
-                      border: '1px solid rgba(254,108,28,0.2)' 
-                    }}>
-                      <div className="space-y-2">
-                        <p className="text-sm font-semibold" style={{ color: '#1a1a1a', fontFamily: 'Kufam, sans-serif' }}>
-                          {t.dashboard.createPayment.remainingAmountARS}
-                        </p>
-                        <div className="flex items-center space-x-2">
-                          <img 
-                            src="/logo-arg.png" 
-                            alt="ARS" 
-                            className="w-5 h-5"
-                          />
-                          <span className="text-lg font-bold" style={{ color: '#fe6c1c', fontFamily: 'Kufam, sans-serif' }}>
-                            ${remainingARSAmount.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS
-                          </span>
-                        </div>
-                        <p className="text-xs" style={{ color: '#5d5d5d', fontFamily: 'Kufam, sans-serif' }}>
-                          {t.dashboard.createPayment.remainingAmountDescription
-                            .replace('{percentage}', String(100 - percentage))
-                            .replace('{amount}', remainingARSAmount.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
-                        </p>
-                      </div>
+                <div
+                  className="rounded-2xl px-4 py-3.5"
+                  style={{
+                    background: 'rgba(254, 108, 28, 0.06)',
+                    border: '1px solid rgba(254, 108, 28, 0.12)',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <img src="/usdc.png" alt="" className="h-7 w-7 shrink-0 rounded-full" />
+                      <span className="truncate text-sm font-medium text-gray-800">
+                        {t.dashboard.createPayment.cryptoToReceive}
+                      </span>
                     </div>
-                  )}
+                    <span
+                      className="shrink-0 text-sm font-semibold tabular-nums"
+                      style={{ color: oracleLoading ? '#9ca3af' : '#2775CA' }}
+                    >
+                      {oracleLoading
+                        ? '…'
+                        : adjustedCryptoAmount !== null
+                          ? `${adjustedCryptoAmount.toFixed(6)} USDC`
+                          : '—'}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                    {oracleLoading || !exchangeRate
+                      ? t.dashboard.createPayment.loadingRate || '…'
+                      : `${t.dashboard.createPayment.exchangeRateLabel}: $${exchangeRate.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ARS = 1 USDC`}
+                  </p>
+                </div>
 
-                  {/* Botón Generar QR */}
-                  <Button
-                    type="submit"
-                    disabled={isCreating || !watchedAmount}
-                    className="w-full h-14 rounded-xl font-semibold text-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                    style={{ 
-                      backgroundColor: '#fe6c1c', 
-                      color: '#ffffff',
-                      fontFamily: 'Kufam, sans-serif'
+                {percentage < 100 && remainingARSAmount !== null && watchedAmount && (
+                  <div
+                    className="rounded-xl px-3 py-2.5 text-sm"
+                    style={{
+                      background: 'rgba(254, 108, 28, 0.04)',
+                      border: '1px dashed rgba(254, 108, 28, 0.25)',
                     }}
                   >
-                    {isCreating ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>{t.dashboard.createPayment.generatingQR}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        <QrCode className="w-5 h-5" />
-                        <span>{t.dashboard.createPayment.generateQR}</span>
-                      </div>
-                    )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
+                    <p className="font-medium text-gray-800">{t.dashboard.createPayment.remainingAmountARS}</p>
+                    <p className="mt-0.5 text-base font-bold text-[#fe6c1c]">
+                      ${remainingARSAmount.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                      ARS
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {t.dashboard.createPayment.remainingAmountDescription
+                        .replace('{percentage}', String(100 - percentage))
+                        .replace(
+                          '{amount}',
+                          remainingARSAmount.toLocaleString(language === 'es' ? 'es-AR' : language === 'en' ? 'en-US' : language === 'it' ? 'it-IT' : language === 'pt' ? 'pt-BR' : 'zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        )}
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={isCreating || !watchedAmount}
+                  className="h-12 w-full rounded-xl text-base font-semibold shadow-sm transition-opacity hover:opacity-95 disabled:opacity-45"
+                  style={{
+                    backgroundColor: '#fe6c1c',
+                    color: '#ffffff',
+                  }}
+                >
+                  {isCreating ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      {t.dashboard.createPayment.generatingQR}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      <QrCode className="h-5 w-5" />
+                      {t.dashboard.createPayment.generateQR}
+                    </span>
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
       {/* QR Modal */}
@@ -362,14 +346,23 @@ export default function CreatePaymentPage() {
         qrData={qrData}
         onRefreshQR={async () => {
           if (!qrData?.paymentData?.amountARS) return
-          
+
+          const bearer = await resolveBearerToken()
+          if (!bearer) {
+            toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
+            return
+          }
+
           setRefreshingQR(true)
           try {
-            const result = await midatoPayAPI.generatePaymentQR({
-              amountARS: qrData.paymentData.amountARS,
-              targetCrypto: 'USDC',
-              network: selectedNetwork
-            })
+            const result = await midatoPayAPI.generatePaymentQR(
+              {
+                amountARS: qrData.paymentData.amountARS,
+                targetCrypto: 'USDC',
+                network: paymentNetwork,
+              },
+              bearer
+            )
             
             if (result.success) {
               setQrData(result)

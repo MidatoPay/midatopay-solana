@@ -44,7 +44,8 @@ const authenticateToken = async (req, res, next) => {
         email: true,
         name: true,
         role: true,
-        isActive: true
+        isActive: true,
+        walletAddress: true,
       }
     });
 
@@ -84,11 +85,18 @@ const authenticateToken = async (req, res, next) => {
     }
 
     if (error.name === 'JsonWebTokenError') {
+      const clerkHint =
+        process.env.CLERK_SECRET_KEY &&
+        token &&
+        token.length > 120
+          ? 'Si iniciaste sesión con Clerk/Google, agrega la Secret Key correcta en backend/.env (CLERK_SECRET_KEY, misma app Clerk que el frontend).'
+          : undefined;
       return res.status(403).json({
         error: 'Token inválido',
         message: 'El token proporcionado no es válido',
         code: 'INVALID_TOKEN',
-        details: error.message
+        details: error.message,
+        ...(clerkHint ? { hint: clerkHint } : {}),
       });
     }
 

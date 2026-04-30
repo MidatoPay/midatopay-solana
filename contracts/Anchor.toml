@@ -1,0 +1,28 @@
+[toolchain]
+anchor_version = "0.30.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+dynamic_fx_oracle = "BwaGWVKhAQEUNENoXdnPDeciT4ct97s3u5mRjE4iJMkP"
+payment_gateway = "DpVyTLLtthqVWsiGjoz3hWnvF8ugHTqhRsB1SY9Rp5zu"
+test_usdc = "ESRwzP19W4xsc69xaxpSAnrttFH4K4JxERyBjMS4h68W"
+
+[programs.devnet]
+dynamic_fx_oracle = "BwaGWVKhAQEUNENoXdnPDeciT4ct97s3u5mRjE4iJMkP"
+payment_gateway = "DpVyTLLtthqVWsiGjoz3hWnvF8ugHTqhRsB1SY9Rp5zu"
+test_usdc = "ESRwzP19W4xsc69xaxpSAnrttFH4K4JxERyBjMS4h68W"
+
+[programs.testnet]
+dynamic_fx_oracle = "BwaGWVKhAQEUNENoXdnPDeciT4ct97s3u5mRjE4iJMkP"
+payment_gateway = "DpVyTLLtthqVWsiGjoz3hWnvF8ugHTqhRsB1SY9Rp5zu"
+test_usdc = "ESRwzP19W4xsc69xaxpSAnrttFH4K4JxERyBjMS4h68W"
+
+[provider]
+cluster = "Testnet"
+wallet = "~/.config/solana/devnet-alt.json"
+
+[scripts]
+test = "echo no-tests-yet"

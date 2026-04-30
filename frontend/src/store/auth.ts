@@ -44,6 +44,18 @@ type AuthStore = AuthState & AuthActions
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
+async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text()
+  if (!text) {
+    return {}
+  }
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    return { message: text }
+  }
+}
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -68,15 +80,20 @@ export const useAuthStore = create<AuthStore>()(
             body: JSON.stringify({ email, password }),
           })
 
-          const data = await response.json()
+          const data = await readJsonResponse(response)
 
           if (!response.ok) {
-            throw new Error(data.message || 'Error al iniciar sesión')
+            const msg =
+              (typeof data.message === 'string' && data.message) ||
+              (typeof data.error === 'string' && data.error) ||
+              response.statusText ||
+              'Error al iniciar sesión'
+            throw new Error(msg)
           }
 
           set({
-            user: data.user,
-            token: data.token,
+            user: data.user as User,
+            token: data.token as string,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -102,15 +119,20 @@ export const useAuthStore = create<AuthStore>()(
             body: JSON.stringify(userData),
           })
 
-          const data = await response.json()
+          const data = await readJsonResponse(response)
 
           if (!response.ok) {
-            throw new Error(data.message || 'Error al registrarse')
+            const msg =
+              (typeof data.message === 'string' && data.message) ||
+              (typeof data.error === 'string' && data.error) ||
+              response.statusText ||
+              'Error al registrarse'
+            throw new Error(msg)
           }
 
           set({
-            user: data.user,
-            token: data.token,
+            user: data.user as User,
+            token: data.token as string,
             isAuthenticated: true,
             isLoading: false,
             error: null,
@@ -149,14 +171,19 @@ export const useAuthStore = create<AuthStore>()(
             body: JSON.stringify(userData),
           })
 
-          const data = await response.json()
+          const data = await readJsonResponse(response)
 
           if (!response.ok) {
-            throw new Error(data.message || 'Error al actualizar perfil')
+            const msg =
+              (typeof data.message === 'string' && data.message) ||
+              (typeof data.error === 'string' && data.error) ||
+              response.statusText ||
+              'Error al actualizar perfil'
+            throw new Error(msg)
           }
 
           set({
-            user: data.user,
+            user: data.user as User,
             isLoading: false,
             error: null,
           })
@@ -170,7 +197,8 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       setUser: (user: User) => {
-        set({ user })
+        // Clerk y el perfil backend rellenan el usuario sin pasar por login JWT
+        set({ user, isAuthenticated: true })
       },
 
       setLoading: (loading: boolean) => {

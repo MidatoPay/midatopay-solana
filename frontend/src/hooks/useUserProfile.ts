@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth, useUser } from '@clerk/nextjs'
 import { useAuthStore } from '@/store/auth'
+import { debugLog, debugWarn } from '@/lib/logger'
 
 /**
  * Hook para obtener y gestionar el perfil del usuario
@@ -30,7 +31,7 @@ export function useUserProfile() {
     setError(null)
 
     try {
-      console.log('🔄 useUserProfile: Obteniendo token y cargando perfil...')
+      debugLog('🔄 useUserProfile: Obteniendo token y cargando perfil...')
       
       // Prioridad 1: Si hay token JWT (registro manual), usarlo
       let token: string | null = null
@@ -39,20 +40,20 @@ export function useUserProfile() {
       if (jwtToken && isJwtAuthenticated) {
         token = jwtToken
         tokenSource = 'JWT'
-        console.log('✅ Usando token JWT (registro manual)')
+        debugLog('✅ Usando token JWT (registro manual)')
       } else if (isAuthLoaded) {
         // Prioridad 2: Si Clerk está cargado, intentar obtener token de Clerk
         try {
           token = await getToken()
           if (token) {
             tokenSource = 'Clerk'
-            console.log('✅ Token de Clerk obtenido')
+            debugLog('✅ Token de Clerk obtenido')
           }
         } catch (err) {
-          console.log('⚠️ No se pudo obtener token de Clerk:', err)
+          debugLog('⚠️ No se pudo obtener token de Clerk:', err)
         }
       } else {
-        console.log('⏳ useUserProfile: Esperando que Clerk termine de cargar...')
+        debugLog('⏳ useUserProfile: Esperando que Clerk termine de cargar...')
         setIsLoading(false)
         return
       }
@@ -61,10 +62,10 @@ export function useUserProfile() {
         throw new Error('No se pudo obtener el token de autenticación')
       }
 
-      console.log(`✅ Token obtenido (${tokenSource}), llamando al backend...`)
+      debugLog(`✅ Token obtenido (${tokenSource}), llamando al backend...`)
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      console.log('📡 useUserProfile: Llamando a API para obtener/crear perfil...')
+      debugLog('📡 useUserProfile: Llamando a API para obtener/crear perfil...')
       const response = await fetch(`${apiUrl}/api/auth/profile`, {
         method: 'GET',
         headers: {
@@ -86,7 +87,7 @@ export function useUserProfile() {
       const data = await response.json()
       const user = data.user
 
-      console.log('✅ useUserProfile: Perfil obtenido del backend:', {
+      debugLog('✅ useUserProfile: Perfil obtenido del backend:', {
         id: user.id,
         email: user.email,
         name: user.name,
@@ -106,7 +107,7 @@ export function useUserProfile() {
       setNeedsOnboarding(needsOnboardingCheck)
       setNeedsWallet(!user.walletAddress)
 
-      console.log('✅ useUserProfile: Perfil cargado:', {
+      debugLog('✅ useUserProfile: Perfil cargado:', {
         email: user.email,
         name: user.name,
         needsOnboarding: needsOnboardingCheck,
@@ -124,7 +125,7 @@ export function useUserProfile() {
   useEffect(() => {
     // Si hay token JWT, cargar perfil inmediatamente
     if (jwtToken && isJwtAuthenticated) {
-      console.log('🔄 useUserProfile: Usuario autenticado con JWT, cargando perfil...')
+      debugLog('🔄 useUserProfile: Usuario autenticado con JWT, cargando perfil...')
       const timer = setTimeout(() => {
         loadProfile()
       }, 500)
@@ -151,7 +152,7 @@ export function useUserProfile() {
       : false
 
     if (hasClerkCookies) {
-      console.log('🔄 useUserProfile: Hay cookies de Clerk pero isSignedIn es false, intentando obtener token...')
+      debugLog('🔄 useUserProfile: Hay cookies de Clerk pero isSignedIn es false, intentando obtener token...')
       
       // Intentar obtener token con retry continuo (hasta 30 intentos, cada 3 segundos = 90 segundos total)
       // Continuar intentando indefinidamente si hay cookies de Clerk
@@ -164,10 +165,10 @@ export function useUserProfile() {
         if (hasStopped) return false
         
         try {
-          console.log(`🔄 useUserProfile: Intento ${retryCount + 1}/${maxRetries} de obtener token...`)
+          debugLog(`🔄 useUserProfile: Intento ${retryCount + 1}/${maxRetries} de obtener token...`)
           const token = await getToken()
           if (token) {
-            console.log('✅ useUserProfile: Token obtenido después de retry, cargando perfil...')
+            debugLog('✅ useUserProfile: Token obtenido después de retry, cargando perfil...')
             // Limpiar timeout si existe
             if (timeoutId) clearTimeout(timeoutId)
             hasStopped = true
@@ -176,12 +177,12 @@ export function useUserProfile() {
           } else if (retryCount < maxRetries - 1) {
             retryCount++
             const delay = 3000 // 3 segundos entre intentos (dar más tiempo a Clerk)
-            console.log(`⏳ useUserProfile: Reintentando obtener token en ${delay}ms... (intento ${retryCount + 1}/${maxRetries})`)
+            debugLog(`⏳ useUserProfile: Reintentando obtener token en ${delay}ms... (intento ${retryCount + 1}/${maxRetries})`)
             timeoutId = setTimeout(tryLoadProfile, delay)
             return false
           } else {
-            console.warn('⚠️ useUserProfile: No se pudo obtener token después de 30 intentos')
-            console.log('ℹ️ Continuando en segundo plano - el usuario puede seguir usando el dashboard')
+            debugWarn('⚠️ useUserProfile: No se pudo obtener token después de 30 intentos')
+            debugLog('ℹ️ Continuando en segundo plano - el usuario puede seguir usando el dashboard')
             setIsLoading(false)
             hasStopped = true
             return false

@@ -1,170 +1,227 @@
-const express = require('express');
+const express = require("express");
+const { PublicKey } = require("@solana/web3.js");
+const { getMint } = require("@solana/spl-token");
+const priceOracle = require("../services/priceOracle");
+const { getSolanaService } = require("../services/solanaService");
+const { authenticateHybrid } = require("../middleware/clerkAuth");
+const { fetchCriptoYaForDashboard } = require("../services/criptoYaOracleSync");
+
 const router = express.Router();
-const priceOracle = require('../services/priceOracle');
 
-// Endpoint para obtener cotización ARS → USDT del Oracle
-router.get('/quote/:amount', async (req, res) => {
+router.get("/quote/:amount", async (req, res) => {
   try {
-    const amountARS = parseFloat(req.params.amount);
-    const network = (req.query.network || 'avalanche').toLowerCase();
-    
-    if (isNaN(amountARS) || amountARS <= 0) {
+    const amountARS = Number(req.params.amount);
+    const network = String(req.query.network || "solana").toLowerCase();
+
+    if (!Number.isFinite(amountARS) || amountARS <= 0) {
       return res.status(400).json({
         success: false,
-        error: 'Amount must be a positive number'
+        error: "Amount must be a positive number",
       });
     }
 
-    const supportedNetworks = ['avalanche'];
-    if (!supportedNetworks.includes(network)) {
+    if (network !== "solana") {
       return res.status(400).json({
         success: false,
-        error: `Network must be one of: ${supportedNetworks.join(', ')}`
+        error: "Network must be solana",
       });
     }
 
-    console.log(`🔍 Obteniendo cotización para ${amountARS} ARS en red ${network}...`);
-    
-    const conversion = await priceOracle.convertARSToCrypto(amountARS, 'USDC', network);
-    
+    const conversion = await priceOracle.convertARSToCrypto(amountARS, "USDC", network);
+
     res.json({
       success: true,
       data: {
         amountARS,
-        targetCrypto: 'USDC',
+        targetCrypto: "USDC",
         network,
         cryptoAmount: conversion.cryptoAmount,
+        cryptoAmountSmallestUnits: conversion.cryptoAmountSmallestUnits,
         exchangeRate: conversion.exchangeRate,
         source: conversion.source,
         timestamp: conversion.timestamp,
-        oracleAddress: conversion.oracleAddress || null,
-        cryptoAmountWithMargin: conversion.cryptoAmountWithMargin
-      }
+        tokenMint: conversion.tokenMint,
+        decimals: conversion.decimals,
+        cryptoAmountWithMargin: conversion.cryptoAmountWithMargin,
+      },
     });
   } catch (error) {
-    console.error('Error obteniendo cotización:', error.message);
+    console.error("Error obteniendo cotizaci?n:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
 
-// Endpoint para obtener el rate actual del Oracle
-router.get('/rate', async (req, res) => {
+router.get("/rate", async (_req, res) => {
   try {
-    console.log('🔍 Obteniendo rate actual del Oracle...');
-    
-    const priceData = await priceOracle.getCurrentPrice('USDC', 'ARS');
-    
+    const priceData = await priceOracle.getCurrentPrice("USDC", "ARS");
+
     res.json({
       success: true,
       data: {
         rate: priceData.price,
         source: priceData.source,
         timestamp: priceData.timestamp,
-        oracleAddress: priceData.oracleAddress || null,
-        usdtAmount: priceData.usdtAmount || null
-      }
+        oracleProgramId: priceData.oracleProgramId || null,
+        tokenMint: priceData.tokenMint || process.env.SOLANA_USDC_MINT || null,
+      },
     });
   } catch (error) {
-    console.error('Error obteniendo rate:', error.message);
+    console.error("Error obteniendo rate:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
 
-// Endpoint para verificar estado del Oracle
-router.get('/status', async (req, res) => {
+router.get("/status", async (_req, res) => {
   try {
-    console.log('🔍 Verificando estado del Oracle...');
-    
     const status = await priceOracle.getOracleStatus();
-    
-    res.json({
-      success: true,
-      data: status
-    });
+    res.json({ success: true, data: status });
   } catch (error) {
-    console.error('Error verificando estado del Oracle:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error("Error verificando estado del Oracle:", error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Endpoint para obtener balance USDT de una cuenta
-router.get('/balance/:address', async (req, res) => {
+router.get("/balance/:address", async (req, res) => {
   try {
     const accountAddress = req.params.address;
-    
-    if (!accountAddress || accountAddress.length < 10) {
+    new PublicKey(accountAddress);
+
+    const balance = await priceOracle.getUSDTBalance(accountAddress);
+    res.json({ success: true, data: balance });
+  } catch (error) {
+    console.error("Error obteniendo balance USDC:", error.message);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Balance USDC on-chain del comercio + cotización CriptoYa (Fiwind) para referencia ARS.
+ * La tasa usa CRIPTOYA_DASHBOARD_RATE_SIDE / CRIPTOYA_DASHBOARD_VOLUME, no el mismo criterio que el sync al oracle.
+ */
+router.get("/merchant-crypto-overview", authenticateHybrid, async (req, res) => {
+  try {
+    const walletAddress = req.user?.walletAddress;
+    if (!walletAddress) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid account address'
+        error: "No hay billetera en el perfil",
       });
     }
 
-    console.log(`🔍 Obteniendo balance USDT para ${accountAddress}...`);
-    
-    const balance = await priceOracle.getUSDTBalance(accountAddress);
-    
-    res.json({
-      success: true,
-      data: balance
-    });
-  } catch (error) {
-    console.error('Error obteniendo balance USDT:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Endpoint para probar el Oracle con diferentes montos
-router.get('/test', async (req, res) => {
-  try {
-    console.log('🧪 Probando Oracle con diferentes montos...');
-    
-    const testAmounts = [1, 10, 100, 1000, 10000];
-    const results = [];
-    
-    for (const amount of testAmounts) {
-      try {
-        const conversion = await priceOracle.convertARSToCrypto(amount, 'USDC');
-        results.push({
-          amountARS: amount,
-          usdtAmount: conversion.cryptoAmount,
-          rate: conversion.exchangeRate,
-          source: conversion.source,
-          success: true
-        });
-      } catch (error) {
-        results.push({
-          amountARS: amount,
-          error: error.message,
-          success: false
-        });
-      }
+    const mint = process.env.SOLANA_USDC_MINT;
+    if (!mint) {
+      return res.status(500).json({
+        success: false,
+        error: "SOLANA_USDC_MINT no configurado",
+      });
     }
-    
+
+    const solana = getSolanaService();
+    const bal = await solana.getTokenBalance(walletAddress, mint);
+    const mintPk = solana.toPublicKey(mint);
+    const mintInfo = await getMint(
+      solana.connection,
+      mintPk,
+      solana.commitment,
+      solana.tokenProgramId
+    );
+    const decimals = mintInfo.decimals;
+    const rawAmt = BigInt(bal.balanceSmallestUnits || "0");
+    const usdcHuman = Number(rawAmt) / 10 ** decimals;
+
+    let criptoYa = null;
+    try {
+      const q = await fetchCriptoYaForDashboard();
+      criptoYa = {
+        exchange: q.exchange,
+        ask: q.ask,
+        bid: q.bid,
+        rateArsPerUsdcUsed: q.rateArsPerUsdc,
+        side: q.sideUsed,
+        volume: q.volume,
+        time: q.time,
+        source: "CRIPTOYA_API",
+      };
+    } catch (e) {
+      console.warn("CriptoYa dashboard quote failed:", e.message);
+    }
+
+    const rate = criptoYa?.rateArsPerUsdcUsed;
+    const arsEquivalentReference =
+      rate != null && Number.isFinite(rate) && Number.isFinite(usdcHuman)
+        ? usdcHuman * rate
+        : null;
+
     res.json({
       success: true,
       data: {
-        testResults: results,
-        timestamp: new Date()
-      }
+        walletAddress,
+        usdcBalance: usdcHuman,
+        usdcDecimals: decimals,
+        tokenAccount: bal.tokenAccount,
+        criptoYa,
+        arsEquivalentReference,
+      },
     });
   } catch (error) {
-    console.error('Error probando Oracle:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
+    console.error("Error en merchant-crypto-overview:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post("/initialize", async (_req, res) => {
+  try {
+    const solana = getSolanaService();
+    const oracleConfig = await solana.fetchOracleConfig();
+
+    if (oracleConfig) {
+      return res.json({
+        success: true,
+        message: "Oracle ya estaba inicializado",
+        data: oracleConfig,
+      });
+    }
+
+    const signature = await solana.initializeOracle();
+    res.json({
+      success: true,
+      message: "Oracle inicializado correctamente",
+      signature,
+      explorerUrl: solana.getExplorerUrl(signature),
     });
+  } catch (error) {
+    console.error("Error inicializando oracle:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post("/set-price", async (req, res) => {
+  try {
+    const { tokenMint, priceArs } = req.body;
+    if (!tokenMint || !priceArs) {
+      return res.status(400).json({
+        success: false,
+        error: "tokenMint and priceArs are required",
+      });
+    }
+
+    const solana = getSolanaService();
+    const signature = await solana.setOraclePrice(tokenMint, Number(priceArs));
+    res.json({
+      success: true,
+      message: "Precio actualizado correctamente",
+      signature,
+      explorerUrl: solana.getExplorerUrl(signature),
+    });
+  } catch (error) {
+    console.error("Error seteando precio del oracle:", error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "programs/dynamic_fx_oracle",
+    "programs/payment_gateway",
+    "programs/test_usdc"
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+
+[patch.crates-io]
+anchor-syn = { git = "https://github.com/coral-xyz/anchor", tag = "v0.30.0" }

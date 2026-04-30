@@ -117,3 +117,15 @@ temp/
 
 # Local development
 .local/
+
+# Solana / Anchor — artefactos de compilación (no subir)
+contracts/target/
+contracts/client/target/
+**/target/debug/
+**/target/release/
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# Windows alternate stream (Zone.Identifier)
+*Zone.Identifier

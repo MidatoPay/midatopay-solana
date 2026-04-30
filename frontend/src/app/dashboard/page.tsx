@@ -6,38 +6,63 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import DashboardLayout from '@/components/DashboardLayout'
-import { Card, CardContent } from '@/components/ui/card'
-import { QrCode, ArrowUp, History, Settings } from 'lucide-react'
+import { QrCode, Wallet, History, Settings } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import toast from 'react-hot-toast'
+import { midatoPayAPI } from '@/lib/midatopay-api'
+import { getPreferredBearerToken } from '@/lib/auth-session'
+import { useAuthStore } from '@/store/auth'
+
+const font = { fontFamily: 'Kufam, sans-serif' } as const
+const brandOrange = '#FF6A00'
+
+function formatUsdcBalance(n: number) {
+  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 6 }).format(n)
+}
+
+function formatArsRate(n: number) {
+  return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+}
+
+function formatArsTotal(n: number) {
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
+}
+
+type CryptoOverviewData = {
+  usdcBalance: number
+  arsEquivalentReference: number | null
+  criptoYa: { rateArsPerUsdcUsed: number; side: string } | null
+}
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const { t } = useLanguage()
-  const { user, isLoading: profileLoading, needsOnboarding, needsWallet } = useUserProfile()
-  const { isSignedIn, isLoaded: isClerkAuthLoaded } = useClerkAuth()
+  const { user, isLoading: profileLoading, error: profileError, needsWallet, reloadProfile } = useUserProfile()
+  const { isSignedIn, isLoaded: isClerkAuthLoaded, getToken } = useClerkAuth()
+  const jwtToken = useAuthStore((s) => s.token)
+  const isJwtAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const [cryptoOverview, setCryptoOverview] = useState<CryptoOverviewData | null>(null)
+  const [cryptoLoading, setCryptoLoading] = useState(false)
   
-  // Debug: Verificar si venimos de OAuth callback
   useEffect(() => {
-    const clerkSession = searchParams.get('__clerk_redirect_url') || searchParams.get('__session')
-    if (clerkSession) {
-      console.log('🔄 Detectado callback de Clerk OAuth:', clerkSession)
+    if (!user?.walletAddress || profileLoading) return
+    let cancelled = false
+    ;(async () => {
+      setCryptoLoading(true)
+      try {
+        const bearer = await getPreferredBearerToken(getToken)
+        const json = await midatoPayAPI.getMerchantCryptoOverview(bearer ?? undefined)
+        if (cancelled || !json?.success || !json.data) return
+        setCryptoOverview(json.data as CryptoOverviewData)
+      } catch (e) {
+        console.error('merchant-crypto-overview:', e)
+        if (!cancelled) setCryptoOverview(null)
+      } finally {
+        if (!cancelled) setCryptoLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-    
-    // Verificar estado de Clerk después de un delay para dar tiempo a que se establezca la sesión
-    if (isClerkAuthLoaded) {
-      const timer = setTimeout(() => {
-        console.log('🔍 Estado de Clerk en Dashboard:', {
-          isSignedIn,
-          isLoaded: isClerkAuthLoaded,
-          hasSearchParams: searchParams.toString().length > 0
-        })
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [isClerkAuthLoaded, isSignedIn, searchParams])
+  }, [user?.walletAddress, profileLoading, isClerkAuthLoaded, isSignedIn, getToken, jwtToken, isJwtAuthenticated])
 
   // NO redirigir a onboarding - el usuario puede crear wallet directamente desde el dashboard
   // useEffect(() => {
@@ -49,14 +74,57 @@ export default function DashboardPage() {
   //   }
   // }, [profileLoading, needsOnboarding, router])
 
-  // Verificar si el usuario tiene wallet en la BD
-  const hasAnyWallet = user?.walletAddress
-  
-  if (!hasAnyWallet && !profileLoading) {
+  const hasAnyWallet = Boolean(user?.walletAddress)
+  const awaitingProfile = profileLoading || (!user && !profileError)
+
+  if (awaitingProfile) {
     return (
       <DashboardLayout pageTitle={t.dashboard.header.start}>
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 to-teal-50 flex items-center justify-center p-4">
-          {/* Wallet creation component removed */}
+        <div className="flex min-h-[40vh] items-center justify-center p-8">
+          <p className="text-sm text-gray-500" style={{ fontFamily: 'Kufam, sans-serif' }}>
+            Cargando perfil…
+          </p>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (profileError) {
+    return (
+      <DashboardLayout pageTitle={t.dashboard.header.start}>
+        <div className="mx-auto max-w-md p-8 text-center">
+          <p className="text-sm text-red-600 mb-4" style={{ fontFamily: 'Kufam, sans-serif' }}>
+            {profileError}
+          </p>
+          <button
+            type="button"
+            onClick={() => reloadProfile()}
+            className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"
+            style={{ fontFamily: 'Kufam, sans-serif' }}
+          >
+            Reintentar
+          </button>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (!hasAnyWallet) {
+    return (
+      <DashboardLayout pageTitle={t.dashboard.header.start}>
+        <div className="mx-auto max-w-lg p-8 text-center">
+          <p className="text-gray-700 mb-4" style={{ fontFamily: 'Kufam, sans-serif' }}>
+            {needsWallet
+              ? 'Tu cuenta aún no tiene una billetera asociada. Creala desde la sección Billetera o contactá soporte.'
+              : 'No se encontró dirección de billetera en tu perfil.'}
+          </p>
+          <Link
+            href="/dashboard/billetera"
+            className="inline-block rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"
+            style={{ fontFamily: 'Kufam, sans-serif' }}
+          >
+            Ir a Billetera
+          </Link>
         </div>
       </DashboardLayout>
     )
@@ -64,250 +132,183 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout pageTitle={t.dashboard.header.start}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header Section - Welcome and Total Balance */}
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-10 flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between"
         >
-          <div className="flex items-end justify-between">
-            {/* Welcome Section */}
-            <div style={{ marginTop: '48px' }}>
-              <h2 className="mb-0" style={{ fontFamily: 'Kufam, sans-serif', color: '#2C2C2C', fontWeight: 500, fontSize: '24px', marginBottom: '-10px' }}>
-                {t.dashboard.welcome}
-              </h2>
-              <h2 className="mb-0" style={{ fontFamily: 'Kufam, sans-serif', color: '#FF6A00', fontWeight: 600, fontSize: '62px' }}>
-                {user?.name || 'Tu Negocio'}
-              </h2>
+          <div className="min-w-0 pt-2">
+            <p className="mb-1 text-sm text-neutral-500" style={font}>
+              {t.dashboard.welcome}
+            </p>
+            <h1
+              className="text-3xl font-semibold tracking-tight sm:text-4xl"
+              style={{ ...font, color: brandOrange }}
+            >
+              {user?.name || 'Tu Negocio'}
+            </h1>
+          </div>
+
+          <div
+            className="w-full shrink-0 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm lg:max-w-sm"
+            style={font}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50">
+                <img src="/logo-arg.png" alt="" className="h-7 w-7" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-neutral-500">{t.dashboard.totalBalance}</p>
+                <p className="mt-0.5 text-2xl font-bold tabular-nums text-neutral-900 sm:text-3xl">
+                  {cryptoLoading
+                    ? '…'
+                    : cryptoOverview?.arsEquivalentReference != null &&
+                        Number.isFinite(cryptoOverview.arsEquivalentReference)
+                      ? formatArsTotal(cryptoOverview.arsEquivalentReference)
+                      : '$ 0'}
+                </p>
+              </div>
             </div>
-            
-            {/* Total Balance Card */}
-            <Card style={{ backgroundColor: '#FFFFFF', border: '3px solid transparent', background: 'linear-gradient(#FFFFFF, #FFFFFF) padding-box, linear-gradient(135deg, #FF6A00, #FF8A33) border-box', boxShadow: '0px 6px 20px rgba(255,106,0,0.25)', borderRadius: '16px' }}>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 rounded-lg" style={{ backgroundColor: '#E3F2FD' }}>
-                    <img src="/logo-arg.png" alt="Argentina" className="w-8 h-8" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-base font-medium" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>{t.dashboard.totalBalance}</p>
-                    <p className="text-3xl font-bold" style={{ color: '#2C2C2C', fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>
-                      $ 0
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <svg className="w-4 h-4" style={{ color: '#8B8B8B' }} fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                    <span className="font-medium" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 500 }}>--</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </motion.div>
 
-        {/* Botones de Acción Rápida */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="mb-8"
+          transition={{ delay: 0.04 }}
+          className="mb-10"
         >
-          <div className="flex items-center justify-between gap-4">
-            {/* Generar QR */}
-            <Link 
+          <p
+            className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-400"
+            style={font}
+          >
+            {t.dashboard.quickLinks}
+          </p>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Link
               href="/dashboard/create-payment"
-              className="flex-1 flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200 hover:scale-105 cursor-pointer"
-              style={{ 
-                backgroundColor: '#2C2C2C',
-                border: '2px solid rgba(255,106,0,0.3)',
-                boxShadow: '0px 4px 12px rgba(0,0,0,0.2)'
-              }}
+              className="flex flex-col items-center justify-center rounded-xl border border-orange-200/90 bg-gradient-to-b from-orange-50/90 to-white p-4 shadow-sm ring-1 ring-orange-100/80 transition hover:border-orange-300 hover:ring-orange-200"
+              style={font}
             >
-              <div 
-                className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
-                style={{ 
-                  background: 'linear-gradient(135deg, #FF6A00 0%, #FF8A33 100%)',
-                  boxShadow: '0px 4px 12px rgba(255,106,0,0.3)'
-                }}
+              <div
+                className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg"
+                style={{ background: `linear-gradient(135deg, ${brandOrange} 0%, #FF8A33 100%)` }}
               >
-                <QrCode className="w-7 h-7 text-white" strokeWidth={2.5} />
+                <QrCode className="h-5 w-5 text-white" strokeWidth={2.25} />
               </div>
-              <span 
-                className="text-sm font-semibold text-center"
-                style={{ 
-                  color: '#FFFFFF',
-                  fontFamily: 'Kufam, sans-serif',
-                  fontWeight: 600
-                }}
-              >
+              <span className="text-center text-sm font-semibold text-neutral-900">
                 {t.dashboard.generateQR}
               </span>
             </Link>
 
-            {/* Retirar */}
-            <button
-              onClick={() => {
-                toast(t.dashboard.withdrawComingSoon || 'Función próximamente disponible')
-              }}
-              className="flex-1 flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200 hover:scale-105 cursor-pointer"
-              style={{ 
-                backgroundColor: '#2C2C2C',
-                border: '2px solid rgba(255,106,0,0.3)',
-                boxShadow: '0px 4px 12px rgba(0,0,0,0.2)'
-              }}
+            <Link
+              href="/dashboard/billetera"
+              className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50/90"
+              style={font}
             >
-              <div 
-                className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
-                style={{ 
-                  background: 'linear-gradient(135deg, #FF6A00 0%, #FF8A33 100%)',
-                  boxShadow: '0px 4px 12px rgba(255,106,0,0.3)'
-                }}
-              >
-                <ArrowUp className="w-7 h-7 text-white" strokeWidth={2.5} />
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100">
+                <Wallet className="h-5 w-5 text-neutral-700" strokeWidth={2.25} />
               </div>
-              <span 
-                className="text-sm font-semibold text-center"
-                style={{ 
-                  color: '#FFFFFF',
-                  fontFamily: 'Kufam, sans-serif',
-                  fontWeight: 600
-                }}
-              >
-                {t.dashboard.withdraw}
+              <span className="text-center text-sm font-medium text-neutral-800">
+                {t.dashboard.sidebar.wallet}
               </span>
-            </button>
+            </Link>
 
-            {/* Ver Historial */}
             <Link
               href="/dashboard/movimientos"
-              className="flex-1 flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200 hover:scale-105 cursor-pointer"
-              style={{ 
-                backgroundColor: '#2C2C2C',
-                border: '2px solid rgba(255,106,0,0.3)',
-                boxShadow: '0px 4px 12px rgba(0,0,0,0.2)'
-              }}
+              className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50/90"
+              style={font}
             >
-              <div 
-                className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
-                style={{ 
-                  background: 'linear-gradient(135deg, #FF6A00 0%, #FF8A33 100%)',
-                  boxShadow: '0px 4px 12px rgba(255,106,0,0.3)'
-                }}
-              >
-                <History className="w-7 h-7 text-white" strokeWidth={2.5} />
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100">
+                <History className="h-5 w-5 text-neutral-700" strokeWidth={2.25} />
               </div>
-              <span 
-                className="text-sm font-semibold text-center"
-                style={{ 
-                  color: '#FFFFFF',
-                  fontFamily: 'Kufam, sans-serif',
-                  fontWeight: 600
-                }}
-              >
+              <span className="text-center text-sm font-medium text-neutral-800">
                 {t.dashboard.viewHistory}
               </span>
             </Link>
 
-            {/* Configuración */}
-            <button
-              onClick={() => {
-                toast(t.dashboard.settingsComingSoon || 'Función próximamente disponible')
-              }}
-              className="flex-1 flex flex-col items-center justify-center p-6 rounded-2xl transition-all duration-200 hover:scale-105 cursor-pointer"
-              style={{ 
-                backgroundColor: '#2C2C2C',
-                border: '2px solid rgba(255,106,0,0.3)',
-                boxShadow: '0px 4px 12px rgba(0,0,0,0.2)'
-              }}
+            <Link
+              href="/dashboard/configuracion"
+              className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50/90"
+              style={font}
             >
-              <div 
-                className="w-14 h-14 rounded-xl flex items-center justify-center mb-3"
-                style={{ 
-                  background: 'linear-gradient(135deg, #FF6A00 0%, #FF8A33 100%)',
-                  boxShadow: '0px 4px 12px rgba(255,106,0,0.3)'
-                }}
-              >
-                <Settings className="w-7 h-7 text-white" strokeWidth={2.5} />
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100">
+                <Settings className="h-5 w-5 text-neutral-700" strokeWidth={2.25} />
               </div>
-              <span 
-                className="text-sm font-semibold text-center"
-                style={{ 
-                  color: '#FFFFFF',
-                  fontFamily: 'Kufam, sans-serif',
-                  fontWeight: 600
-                }}
-              >
-                {t.dashboard.settings}
-              </span>
-            </button>
+              <span className="text-center text-sm font-medium text-neutral-800">{t.dashboard.settings}</span>
+            </Link>
           </div>
         </motion.div>
 
-        {/* Saldos en Criptomonedas */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-6"
+          transition={{ delay: 0.08 }}
+          className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6"
+          style={font}
         >
-          <div style={{ backgroundColor: '#FF6A00', borderRadius: '20px', padding: '32px' }}>
-            <div className="flex items-center justify-between mb-6">
-              <h4 className="text-lg font-semibold" style={{ color: '#FFFFFF', fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>{t.dashboard.cryptoBalance}</h4>
-              <button className="px-3 py-1 rounded-lg text-sm font-medium" style={{ backgroundColor: '#FFFFFF', color: '#FF6A00', fontFamily: 'Kufam, sans-serif', fontWeight: 500, borderRadius: '8px', boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' }}>
-                <div className="flex items-center space-x-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  <span>{t.dashboard.filter}</span>
-                </div>
-              </button>
-            </div>
-            
-            <div style={{ backgroundColor: '#FFF9F5', border: '1.8px solid #FF6A00', borderRadius: '14px', boxShadow: '0px 3px 6px rgba(0, 0, 0, 0.08)', padding: '24px' }}>
-              {/* USDC Card */}
-              <div className="flex items-center justify-between" style={{ padding: '16px 0' }}>
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: '#2775CA' }}>
-                    <img 
-                      src="/usdc.png" 
-                      alt="USDC" 
-                      className="w-8 h-8"
-                    />
-                  </div>
-                  <div>
-                    <h5 className="font-bold" style={{ color: '#2C2C2C', fontFamily: 'Kufam, sans-serif', fontWeight: 700 }}>USDC</h5>
-                    <p className="text-sm" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>USD Coin</p>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-[1fr_1fr_1fr] gap-16">
-                  <div className="text-left">
-                    <p className="text-sm" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>{t.dashboard.balance}</p>
-                    <p className="font-bold text-lg" style={{ color: '#FF6A00', fontFamily: 'Kufam, sans-serif', fontWeight: 500 }}>
-                      --
-                    </p>
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>{t.dashboard.exchangeRate}</p>
-                    <p className="font-bold text-lg" style={{ color: '#FF6A00', fontFamily: 'Kufam, sans-serif', fontWeight: 500 }}>--</p>
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 400 }}>{t.dashboard.argentinePesos}</p>
-                    <p className="font-bold text-lg" style={{ color: '#2C2C2C', fontFamily: 'Kufam, sans-serif', fontWeight: 500 }}>--</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-1">
-                  <svg className="w-4 h-4" style={{ color: '#8B8B8B' }} fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                  <span className="font-medium" style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontWeight: 500 }}>--</span>
-                </div>
-              </div>
+          <h2 className="text-base font-semibold text-neutral-900">{t.dashboard.balanceSummaryTitle}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-neutral-500">{t.dashboard.exchangeReferenceNote}</p>
 
-              {/* USDC (ChipiPay) section removed */}
+          <div className="mt-6 flex flex-col gap-6 border-t border-neutral-100 pt-6 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+            <div className="flex items-center gap-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: '#2775CA' }}
+              >
+                <img src="/usdc.png" alt="" className="h-8 w-8" />
+              </div>
+              <div>
+                <p className="font-semibold text-neutral-900">USDC</p>
+                <p className="text-sm text-neutral-500">USD Coin</p>
+              </div>
+            </div>
+
+            <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6 lg:max-w-2xl">
+              <div className="rounded-xl bg-neutral-50/80 px-4 py-3 sm:bg-transparent sm:p-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  {t.dashboard.balance}
+                </p>
+                <p
+                  className="mt-1 text-lg font-semibold tabular-nums sm:text-xl"
+                  style={{ color: brandOrange }}
+                >
+                  {cryptoLoading
+                    ? '…'
+                    : cryptoOverview != null
+                      ? `${formatUsdcBalance(cryptoOverview.usdcBalance)} USDC`
+                      : '--'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-neutral-50/80 px-4 py-3 sm:bg-transparent sm:p-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  {t.dashboard.exchangeRate}
+                </p>
+                <p
+                  className="mt-1 text-lg font-semibold tabular-nums sm:text-xl"
+                  style={{ color: brandOrange }}
+                >
+                  {cryptoLoading
+                    ? '…'
+                    : cryptoOverview?.criptoYa?.rateArsPerUsdcUsed != null
+                      ? `${formatArsRate(cryptoOverview.criptoYa.rateArsPerUsdcUsed)} ARS`
+                      : '--'}
+                </p>
+              </div>
+              <div className="rounded-xl bg-neutral-50/80 px-4 py-3 sm:bg-transparent sm:p-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  {t.dashboard.argentinePesos}
+                </p>
+                <p className="mt-1 text-lg font-semibold tabular-nums text-neutral-900 sm:text-xl">
+                  {cryptoLoading
+                    ? '…'
+                    : cryptoOverview?.arsEquivalentReference != null &&
+                        Number.isFinite(cryptoOverview.arsEquivalentReference)
+                      ? formatArsTotal(cryptoOverview.arsEquivalentReference)
+                      : '--'}
+                </p>
+              </div>
             </div>
           </div>
         </motion.div>

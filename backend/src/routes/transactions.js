@@ -1,11 +1,30 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const prisma = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateHybrid } = require('../middleware/clerkAuth');
 const { getCurrentPrice } = require('../services/priceOracle');
 const { simulateBlockchainTransaction } = require('../services/blockchain');
 
 const router = express.Router();
+
+/** Serializa filas Transaction para JSON (BigInt y Decimal no son serializables por defecto). */
+function serializeTransactionRow(tx) {
+  if (!tx) return tx;
+  const { paymentId, amount, exchangeRate, finalAmount, payment, ...rest } = tx;
+  return {
+    ...rest,
+    paymentId: paymentId != null ? String(paymentId) : null,
+    amount: amount != null ? Number(amount) : null,
+    exchangeRate: exchangeRate != null ? Number(exchangeRate) : null,
+    finalAmount: finalAmount != null ? Number(finalAmount) : null,
+    payment: payment
+      ? {
+          ...payment,
+          amount: payment.amount != null ? Number(payment.amount) : null,
+        }
+      : null,
+  };
+}
 
 // Crear nueva transacción (iniciar pago)
 router.post('/create', [
@@ -183,7 +202,7 @@ router.post('/:transactionId/confirm', async (req, res, next) => {
 });
 
 // Obtener transacciones del usuario autenticado (DEBE estar ANTES de /:transactionId)
-router.get('/my-transactions', authenticateToken, async (req, res, next) => {
+router.get('/my-transactions', authenticateHybrid, async (req, res, next) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -215,7 +234,7 @@ router.get('/my-transactions', authenticateToken, async (req, res, next) => {
     ]);
 
     res.json({
-      transactions,
+      transactions: transactions.map(serializeTransactionRow),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

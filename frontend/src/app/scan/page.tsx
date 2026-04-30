@@ -269,7 +269,7 @@ export default function QRScannerPage() {
         const params = new URLSearchParams({
           ...baseParams,
           txHash: tx.hash,
-          explorerUrl: tx.explorerUrl || `https://snowtrace.io/tx/${tx.hash}`
+          explorerUrl: tx.explorerUrl || `https://explorer.solana.com/tx/${tx.hash}?cluster=testnet`
         })
         
         router.push(`/transaction-result?${params.toString()}`)

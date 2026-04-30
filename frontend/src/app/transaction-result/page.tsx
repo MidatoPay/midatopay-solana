@@ -53,7 +53,9 @@ export default function TransactionResultPage() {
         status: status || 'PENDING',
         blockchainTransaction: txHash && txHash !== 'undefined' ? {
           hash: txHash,
-          explorerUrl: explorerUrl && explorerUrl !== 'undefined' ? explorerUrl : `https://snowtrace.io/tx/${txHash}`,
+          explorerUrl: explorerUrl && explorerUrl !== 'undefined'
+            ? explorerUrl
+            : `https://explorer.solana.com/tx/${txHash}?cluster=testnet`,
           success: true
         } : undefined
       })
@@ -230,7 +232,7 @@ export default function TransactionResultPage() {
                         <span className="font-medium text-green-800">Transaction Executed</span>
                       </div>
                       <p className="text-sm text-green-700">
-                        The transaction has been successfully sent to the Avalanche blockchain.
+                        The transaction has been successfully confirmed on the Solana network.
                       </p>
                     </div>
 
@@ -257,7 +259,7 @@ export default function TransactionResultPage() {
                         style={{ background: 'linear-gradient(135deg, #fe6c1c 0%, #fe9c42 100%)' }}
                       >
                         <ExternalLink className="w-4 h-4 mr-2" />
-                        View on Snowtrace
+                        View on Solana Explorer
                       </Button>
                     </div>
                   </>

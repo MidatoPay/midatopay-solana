@@ -12,15 +12,16 @@ import {
   X,
   History,
   Copy,
-  Send,
+  Settings,
 } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { useUser, useAuth as useClerkAuth } from '@clerk/nextjs'
+import { useUser, useAuth as useClerkAuth, useClerk } from '@clerk/nextjs'
 import { useClerkSafe } from '@/hooks/useClerkSafe'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import Image from 'next/image'
+import { debugLog, debugWarn } from '@/lib/logger'
 
 // Selector de idiomas adaptado para el dashboard
 function DashboardLanguageSelector() {
@@ -75,7 +76,8 @@ function DashboardLanguageSelector() {
           alt={currentLanguage.name}
           width={20}
           height={15}
-          className="object-contain rounded-sm"
+          className="h-4 w-5 flex-shrink-0 object-contain rounded-sm"
+          sizes="20px"
         />
         <span className="text-sm font-medium uppercase hidden sm:inline" style={{ color: '#2C2C2C' }}>
           {currentLanguage.code}
@@ -114,7 +116,8 @@ function DashboardLanguageSelector() {
                 alt={lang.name}
                 width={20}
                 height={15}
-                className="object-contain rounded-sm flex-shrink-0"
+                className="h-4 w-5 flex-shrink-0 object-contain rounded-sm"
+                sizes="20px"
               />
               <span className={`text-sm font-medium flex-1 ${language === lang.code ? 'text-orange-600' : 'text-gray-700'}`}>
                 {lang.name}
@@ -144,6 +147,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
   
   // Verificar autenticación con Clerk también (solo si está configurado)
   const { isConfigured: isClerkConfigured } = useClerkSafe()
+  const { signOut } = useClerk()
   const clerkUserHook = useUser() // Siempre llamar useUser (regla de React hooks)
   const clerkAuthHook = useClerkAuth() // useAuth() tiene isSignedIn que es más confiable
   
@@ -167,19 +171,19 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
         // Si hay cookies pero no está autenticado, y useUser() tampoco tiene usuario,
         // y NO venimos de un callback de OAuth, las cookies podrían ser inválidas
         if (hasClerkCookies && !clerkUserHook.user && clerkUserHook.isLoaded) {
-          console.warn('⚠️ Hay cookies de Clerk pero no hay usuario después de esperar. Intentando obtener token...')
-          console.log('🔍 Intentando obtener token para verificar...')
+          debugWarn('⚠️ Hay cookies de Clerk pero no hay usuario después de esperar. Intentando obtener token...')
+          debugLog('🔍 Intentando obtener token para verificar...')
           
           // Intentar obtener el token para forzar que Clerk establezca la sesión
           clerkAuthHook.getToken().then(token => {
             if (token) {
-              console.log('✅ Token obtenido, sesión debería estar establecida')
+              debugLog('✅ Token obtenido, sesión debería estar establecida')
               // Si obtenemos el token, forzar recarga para que Clerk actualice el estado
               setTimeout(() => {
                 window.location.reload()
               }, 1000)
             } else {
-              console.warn('⚠️ No se pudo obtener token aunque hay cookies de Clerk. Limpiando cookies y redirigiendo a login...')
+              debugWarn('⚠️ No se pudo obtener token aunque hay cookies de Clerk. Limpiando cookies y redirigiendo a login...')
               // Si no podemos obtener el token, las cookies son inválidas
               // Limpiar cookies de Clerk y redirigir a login
               if (typeof document !== 'undefined') {
@@ -227,7 +231,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
         ? document.cookie.split(';').filter(c => c.includes('__clerk'))
         : []
       
-      console.log('🔍 Estado de Clerk:', {
+      debugLog('🔍 Estado de Clerk:', {
         isConfigured: isClerkConfigured,
         isLoaded: clerkUserHook.isLoaded,
         hasUser: clerkUserHook.user !== null,
@@ -241,7 +245,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
       
       // Si hay cookies pero no está autenticado, podría ser un problema de sincronización
       if (clerkCookies.length > 0 && !clerkAuthHook.isSignedIn && clerkAuthHook.isLoaded) {
-        console.warn('⚠️ Hay cookies de Clerk pero isSignedIn es false. Esto podría indicar un problema de sincronización.')
+        debugWarn('⚠️ Hay cookies de Clerk pero isSignedIn es false. Esto podría indicar un problema de sincronización.')
       }
     }
   }, [isClerkConfigured, clerkUserHook.isLoaded, clerkUserHook.user, clerkAuthHook.isSignedIn, clerkAuthHook.isLoaded])
@@ -259,7 +263,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
   useEffect(() => {
     if (isClerkConfigured && (!clerkUserHook.isLoaded || !clerkAuthHook.isLoaded)) {
       const timer = setTimeout(() => {
-        console.warn('⚠️ Clerk no ha cargado después de 5 segundos, asumiendo estado cargado')
+        debugWarn('⚠️ Clerk no ha cargado después de 5 segundos, asumiendo estado cargado')
         setClerkLoadTimeout(true)
       }, 5000)
       return () => clearTimeout(timer)
@@ -354,7 +358,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
     // Marcar como callback INMEDIATAMENTE para que otros useEffects lo respeten
     // Nota: Verificamos isSignedIn pero no lo incluimos en dependencias para evitar loops
     if (hasOAuthParams || (hasClerkCookies && !clerkAuthHook.isSignedIn)) {
-      console.log('🔄 Detectado callback de OAuth, estableciendo flag...', {
+      debugLog('🔄 Detectado callback de OAuth, estableciendo flag...', {
         hasOAuthParams,
         hasClerkCookies,
         isSignedIn: clerkAuthHook.isSignedIn,
@@ -387,11 +391,11 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
   useEffect(() => {
     if (!isOAuthCallback || !clerkAuthHook.isLoaded) return
 
-    console.log('🔄 Callback de OAuth detectado - permitiendo acceso temporal...')
+    debugLog('🔄 Callback de OAuth detectado - permitiendo acceso temporal...')
 
     // Si ya está autenticado, no hacer nada
     if (clerkAuthHook.isSignedIn) {
-      console.log('✅ Ya está autenticado después de OAuth')
+      debugLog('✅ Ya está autenticado después de OAuth')
       return
     }
 
@@ -403,14 +407,14 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
     // useUserProfile seguirá intentando obtener el token en segundo plano
     // No redirigir automáticamente
     if (hasClerkCookies) {
-      console.log('✅ Cookies de Clerk detectadas - permitiendo acceso al dashboard')
-      console.log('ℹ️ useUserProfile intentará obtener el token en segundo plano')
+      debugLog('✅ Cookies de Clerk detectadas - permitiendo acceso al dashboard')
+      debugLog('ℹ️ useUserProfile intentará obtener el token en segundo plano')
       // No hacer nada más - permitir que el usuario permanezca en el dashboard
       return
     } else {
       // Si no hay cookies, redirigir después de 5 segundos
       const timeout = setTimeout(() => {
-        console.warn('⚠️ No hay cookies de Clerk después de OAuth. Redirigiendo a login...')
+        debugWarn('⚠️ No hay cookies de Clerk después de OAuth. Redirigiendo a login...')
         router.push('/auth/login?oauth_error=true')
       }, 5000)
 
@@ -423,7 +427,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
   useEffect(() => {
     // Si Clerk está configurado pero no ha cargado, esperar un poco más
     if (isClerkConfigured && !isClerkLoaded) {
-      console.log('⏳ Esperando a que Clerk termine de cargar...', {
+      debugLog('⏳ Esperando a que Clerk termine de cargar...', {
         userLoaded: clerkUserHook.isLoaded,
         authLoaded: clerkAuthHook.isLoaded,
         hasTimeout: clerkLoadTimeout,
@@ -441,7 +445,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
     // El webhook creará el usuario y luego podremos obtener el token
     const isAuthenticatedAny = isAuthenticated || isClerkSignedIn || (isOAuthCallback && hasClerkCookies)
     
-    console.log('🔍 Estado de autenticación:', {
+    debugLog('🔍 Estado de autenticación:', {
       isAuthenticated,
       isClerkSignedIn,
       isOAuthCallback,
@@ -473,15 +477,15 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
         // Si venimos de OAuth con cookies pero aún no hay sesión, NO redirigir
         // Permitir que el usuario permanezca en el dashboard mientras useUserProfile intenta obtener el token
         if (isOAuthCallback && currentHasClerkCookies && !currentIsSignedIn) {
-          console.log('⏳ OAuth callback con cookies detectado - permitiendo acceso continuo al dashboard')
-          console.log('ℹ️ useUserProfile seguirá intentando obtener el token en segundo plano')
+          debugLog('⏳ OAuth callback con cookies detectado - permitiendo acceso continuo al dashboard')
+          debugLog('ℹ️ useUserProfile seguirá intentando obtener el token en segundo plano')
           // NO redirigir
           return
         }
         
         // Solo redirigir si NO hay cookies de Clerk y NO está autenticado
         if (!currentIsAuthenticatedAny && !currentHasClerkCookies) {
-          console.log('🔒 Usuario no autenticado y sin cookies, redirigiendo a login', {
+          debugLog('🔒 Usuario no autenticado y sin cookies, redirigiendo a login', {
             isAuthenticated,
             isClerkSignedIn: currentIsSignedIn,
             isSignedIn: clerkAuthHook.isSignedIn,
@@ -491,7 +495,7 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
           })
           router.push('/auth/login')
         } else {
-          console.log('✅ Usuario autenticado correctamente')
+          debugLog('✅ Usuario autenticado correctamente')
           // Si está autenticado y veníamos de OAuth, limpiar el flag
           if (isOAuthCallback && currentIsSignedIn) {
             setIsOAuthCallback(false)
@@ -503,9 +507,24 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
     }
   }, [isAuthenticated, isClerkSignedIn, isLoading, hasHydrated, isClerkLoaded, router, isOAuthCallback, clerkAuthHook.isSignedIn, clerkAuthHook.isLoaded])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     logout()
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('midatopay_merchant_wallet')
+      }
+    } catch {
+      /* empty */
+    }
     toast.success(t.dashboard.toasts.sessionClosed)
+    if (isClerkConfigured) {
+      try {
+        await signOut({ redirectUrl: typeof window !== 'undefined' ? `${window.location.origin}/` : '/' })
+        return
+      } catch (e) {
+        console.error('Clerk signOut:', e)
+      }
+    }
     router.push('/')
   }
 
@@ -658,18 +677,24 @@ export default function DashboardLayout({ children, pageTitle }: DashboardLayout
             </Link>
 
             <Link
-              href="/dashboard/send-payment"
+              href="/dashboard/configuracion"
               className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                isActive('/dashboard/send-payment') ? 'bg-orange-50' : 'hover:bg-orange-50'
+                isActive('/dashboard/configuracion') ? 'bg-orange-50' : 'hover:bg-orange-50'
               }`}
-              style={{ 
-                backgroundColor: isActive('/dashboard/send-payment') ? 'rgba(255,106,0,0.1)' : 'transparent',
-                fontFamily: 'Kufam, sans-serif'
+              style={{
+                backgroundColor: isActive('/dashboard/configuracion') ? 'rgba(255,106,0,0.1)' : 'transparent',
+                fontFamily: 'Kufam, sans-serif',
               }}
             >
-              <Send className="w-5 h-5" style={{ color: isActive('/dashboard/send-payment') ? '#FF6A00' : '#8B8B8B' }} />
-              <span className="font-medium" style={{ color: isActive('/dashboard/send-payment') ? '#FF6A00' : '#2C2C2C', fontWeight: isActive('/dashboard/send-payment') ? 600 : 500 }}>
-                Enviar Pago
+              <Settings className="w-5 h-5" style={{ color: isActive('/dashboard/configuracion') ? '#FF6A00' : '#8B8B8B' }} />
+              <span
+                className="font-medium"
+                style={{
+                  color: isActive('/dashboard/configuracion') ? '#FF6A00' : '#2C2C2C',
+                  fontWeight: isActive('/dashboard/configuracion') ? 600 : 500,
+                }}
+              >
+                {t.dashboard.sidebar.settings}
               </span>
             </Link>
           </nav>

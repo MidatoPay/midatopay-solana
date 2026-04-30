@@ -9,8 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
 import { useClerkSafe } from '@/hooks/useClerkSafe'
-import { useSignIn } from '@clerk/nextjs'
-
+import { useAuth, useSignIn } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuthActions } from '@/store/auth'
@@ -38,7 +37,21 @@ const GoogleLogo = ({ size = 20 }) => (
       fill="#EA4335"
     />
   </svg>
-);
+)
+
+/** Solo se monta si Clerk está configurado; redirige si ya hay sesión (evita "You're already signed in"). */
+function AlreadySignedInRedirect() {
+  const { isSignedIn, isLoaded } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.replace('/dashboard')
+    }
+  }, [isLoaded, isSignedIn, router])
+
+  return null
+}
 
 export default function LoginPage() {
   const { t } = useLanguage()
@@ -169,11 +182,23 @@ export default function LoginPage() {
       // Nota: authenticateWithRedirect redirige automáticamente,
       // así que el código después de esto no se ejecutará normalmente
       // No resetear isSocialLoading aquí porque la página se redirigirá
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Error en login social:', error)
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : `Error al iniciar sesión con ${provider}. Verifica que Google OAuth esté habilitado en tu dashboard de Clerk.`
+      const raw =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error !== null && 'errors' in error
+            ? JSON.stringify((error as { errors?: unknown }).errors)
+            : String(error)
+      if (/already signed in/i.test(raw)) {
+        router.replace('/dashboard')
+        setIsSocialLoading(false)
+        return
+      }
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : `Error al iniciar sesión con ${provider}. Verifica que Google OAuth esté habilitado en tu dashboard de Clerk.`
       toast.error(errorMessage)
       setIsSocialLoading(false)
     }
@@ -181,6 +206,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FFF4EC' }}>
+      {isClerkConfigured ? <AlreadySignedInRedirect /> : null}
       {/* Header fijo en la parte superior de toda la página */}
       <div className="fixed top-0 left-0 right-0 z-50 p-4" style={{ backgroundColor: '#FFF4EC' }}>
         <div className="max-w-7xl mx-auto flex items-center justify-between">

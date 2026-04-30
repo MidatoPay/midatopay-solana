@@ -46,12 +46,23 @@ app.use(cors({
 }));
 
 // Rate limiting
+const isProduction = process.env.NODE_ENV === 'production';
+const defaultWindowMs = isProduction ? 15 * 60 * 1000 : 60 * 1000;
+const defaultMax = isProduction ? 100 : 2000;
+
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Demasiadas solicitudes desde esta IP, intenta de nuevo más tarde.',
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || defaultWindowMs,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || defaultMax,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: (_req, res, _next, options) => {
+    res.status(options.statusCode || 429).json({
+      success: false,
+      error: 'Too many requests',
+      message:
+        'Demasiadas solicitudes desde esta IP, intenta de nuevo más tarde.',
+    });
+  },
 });
 app.use('/api/', limiter);
 

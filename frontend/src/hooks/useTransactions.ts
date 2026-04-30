@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import { useAuthStore } from '@/store/auth'
 
 interface Transaction {
@@ -38,24 +39,38 @@ export function useTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const token = useAuthStore((state) => state.token)
+  const jwtToken = useAuthStore((s) => s.token)
+  const { getToken, isSignedIn, isLoaded: clerkLoaded } = useClerkAuth()
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      if (!token) {
-        setLoading(false)
-        return // No error si no hay token, simplemente no carga transacciones
+      let bearer: string | null = jwtToken ?? null
+      if (!bearer && clerkLoaded && isSignedIn && getToken) {
+        try {
+          bearer = (await getToken()) ?? null
+        } catch {
+          bearer = null
+        }
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/transactions/my-transactions?limit=10`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      if (!bearer) {
+        setTransactions([])
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/transactions/my-transactions?limit=50`,
+        {
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            'Content-Type': 'application/json',
+          },
         }
-      })
+      )
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -69,21 +84,16 @@ export function useTransactions() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [jwtToken, clerkLoaded, isSignedIn, getToken])
 
   useEffect(() => {
-    if (token) {
-      fetchTransactions()
-    } else {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+    fetchTransactions()
+  }, [fetchTransactions])
 
   return {
     transactions,
     loading,
     error,
-    refetch: fetchTransactions
+    refetch: fetchTransactions,
   }
 }

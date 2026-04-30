@@ -6,14 +6,16 @@ class MidatoPayAPI {
     this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
-    const token = this.getAuthToken();
-    
+  private async request(endpoint: string, options: RequestInit = {}, bearerOverride?: string | null) {
+    const token = bearerOverride !== undefined && bearerOverride !== null
+      ? bearerOverride
+      : this.getAuthToken();
+
     const response = await fetch(`${this.baseURL}${endpoint}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
+        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
     });
@@ -42,27 +44,37 @@ class MidatoPayAPI {
     return null;
   }
 
-  // Generar QR de pago
-  async generatePaymentQR(data: {
-    amountARS: number;
-    targetCrypto: string;
-    network?: string;
-    concept?: string;
-  }) {
-    return this.request('/api/midatopay/generate-qr', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  // Generar QR (opcional: bearer de Clerk vía getToken() si no hay JWT en localStorage)
+  async generatePaymentQR(
+    data: {
+      amountARS: number;
+      targetCrypto: string;
+      network?: string;
+      concept?: string;
+    },
+    bearerToken?: string | null
+  ) {
+    return this.request(
+      '/api/midatopay/generate-qr',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      bearerToken
+    );
   }
 
-  // Obtener historial de pagos
-  async getPaymentHistory(limit: number = 50) {
-    return this.request(`/api/midatopay/payment-history?limit=${limit}`);
+  async getPaymentHistory(limit: number = 50, bearerToken?: string | null) {
+    return this.request(`/api/midatopay/payment-history?limit=${limit}`, {}, bearerToken);
   }
 
-  // Obtener estadísticas del comercio
-  async getMerchantStats() {
-    return this.request('/api/midatopay/stats');
+  async getMerchantStats(bearerToken?: string | null) {
+    return this.request('/api/midatopay/stats', {}, bearerToken);
+  }
+
+  /** Balance USDC + tasa CriptoYa (dashboard) */
+  async getMerchantCryptoOverview(bearerToken?: string | null) {
+    return this.request('/api/oracle/merchant-crypto-overview', {}, bearerToken);
   }
 
   // Escanear QR

@@ -1,0 +1,19 @@
+[package]
+name = "midato-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+anchor-lang = "0.30.1"
+solana-client = "1.18.26"
+solana-sdk = "1.18.26"
+solana-program = "1.18.26"
+spl-token = "=4.0.0"
+spl-associated-token-account = "=2.3.0"
+
+test_usdc = { path = "../programs/test_usdc", features = ["no-entrypoint"] }
+dynamic_fx_oracle = { path = "../programs/dynamic_fx_oracle", features = ["no-entrypoint"] }
+payment_gateway = { path = "../programs/payment_gateway", features = ["no-entrypoint"] }
+
+[workspace]

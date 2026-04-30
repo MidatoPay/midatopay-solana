@@ -1,264 +1,248 @@
-const prisma = require('../config/database');
-const cron = require('node-cron');
-const AvalancheOracleService = require('./avalancheOracleService');
+const prisma = require("../config/database");
+const cron = require("node-cron");
+const { getSolanaService } = require("./solanaService");
+const { syncOracleFromCriptoYa, isSyncEnabled } = require("./criptoYaOracleSync");
 
-// Cache de precios en memoria (para MVP)
 const priceCache = new Map();
-const CACHE_DURATION = 30 * 1000; // 30 segundos
+const CACHE_DURATION = 30 * 1000;
 
-// Instancia del servicio Oracle
-const avalancheOracle = new AvalancheOracleService();
+/** Evita demasiadas txs on-chain si el cron es frecuente */
+let lastCriptoYaChainSyncAt = 0;
 
-async function getCurrentPrice(currency, baseCurrency = 'ARS') {
-  const cacheKey = `${currency}_${baseCurrency}`;
+function getConfiguredMint(currency) {
+  const normalized = String(currency || "").toUpperCase();
+  const mints = {
+    USDC: process.env.SOLANA_USDC_MINT,
+    USDT: process.env.SOLANA_USDC_MINT,
+  };
+
+  return mints[normalized] || null;
+}
+
+async function readOraclePrice(currency, baseCurrency = "ARS") {
+  if (String(baseCurrency).toUpperCase() !== "ARS") {
+    throw new Error(`Solo se soporta baseCurrency=ARS. Solicitado: ${currency}/${baseCurrency}`);
+  }
+
+  const tokenMint = getConfiguredMint(currency);
+  if (!tokenMint) {
+    throw new Error(`No hay mint configurado para ${currency}. Define SOLANA_USDC_MINT.`);
+  }
+
+  const solana = getSolanaService();
+  const oracleConfig = await solana.fetchOracleConfig();
+  if (!oracleConfig) {
+    throw new Error("La cuenta oracle_config no existe. Inicializa el oracle primero.");
+  }
+
+  const priceData = await solana.fetchOraclePrice(tokenMint);
+  if (!priceData) {
+    throw new Error(`No existe price_account para el mint ${tokenMint}. Ejecuta set_price primero.`);
+  }
+
+  return {
+    price: priceData.priceArs,
+    source: "SOLANA_ANCHOR_ORACLE",
+    timestamp: new Date(),
+    oracleProgramId: solana.oracleProgramId.toBase58(),
+    oracleConfig,
+    priceAccount: priceData,
+    tokenMint,
+  };
+}
+
+async function getCurrentPrice(currency, baseCurrency = "ARS") {
+  const cacheKey = `${String(currency).toUpperCase()}_${String(baseCurrency).toUpperCase()}`;
   const cached = priceCache.get(cacheKey);
-  
-  // Verificar cache
-  if (cached && (Date.now() - cached.timestamp.getTime()) < CACHE_DURATION) {
+
+  if (cached && Date.now() - cached.timestamp.getTime() < CACHE_DURATION) {
     return cached;
   }
 
-  // 🚀 ORACLE DE AVALANCHE para USDC/ARS
-  if ((currency === 'USDC' || currency === 'USDT') && baseCurrency === 'ARS') {
-    console.log('🔍 Obteniendo precio USDC/ARS del Oracle de Avalanche...');
-    
-    try {
-      // Usar 1 ARS como base para obtener el rate
-      const quoteResult = await avalancheOracle.getARSToUSDTQuote(1);
-      
-      // Solo guardar si el rate es válido (no 0, no Infinity, no NaN)
-      if (quoteResult.rate > 0 && isFinite(quoteResult.rate)) {
-        const oraclePrice = {
-          price: quoteResult.rate,
-          source: 'AVALANCHE_ORACLE',
-          timestamp: new Date(),
-          oracleAddress: avalancheOracle.oracleAddress,
-          usdtAmount: quoteResult.usdtAmount,
-          rate: quoteResult.rate
-        };
-        
-        // Actualizar cache
-        priceCache.set(cacheKey, oraclePrice);
-        
-        // Guardar en base de datos
-        try {
-          await prisma.priceOracle.create({
-            data: {
-              currency,
-              baseCurrency,
-              price: oraclePrice.price,
-              source: oraclePrice.source
-            }
-          });
-          console.log(`✅ Precio USDC/ARS guardado en BD: $${oraclePrice.price}`);
-        } catch (error) {
-          console.warn('Error guardando precio del Oracle en BD:', error.message);
-        }
-        
-        console.log(`✅ Precio USDC/ARS obtenido del Oracle: $${oraclePrice.price}`);
-        return oraclePrice;
-      } else {
-        console.warn(`⚠️ Rate inválido del Oracle: ${quoteResult.rate}, usando precio por defecto`);
-      }
-    } catch (error) {
-      console.warn(`⚠️ Error obteniendo precio del Oracle de Avalanche: ${error.message}`);
-      console.warn('⚠️ Usando precio por defecto para evitar bloqueo del servidor');
-    }
-    
-    // Devolver un precio por defecto si hay error o rate inválido
-    return {
-      price: 1000, // Precio por defecto: 1 USDC = 1000 ARS
-      source: 'DEFAULT',
-      timestamp: new Date()
-    };
+  const currentPrice = await readOraclePrice(currency, baseCurrency);
+  priceCache.set(cacheKey, currentPrice);
+
+  try {
+    await prisma.priceOracle.create({
+      data: {
+        currency: String(currency).toUpperCase(),
+        baseCurrency: String(baseCurrency).toUpperCase(),
+        price: currentPrice.price,
+        source: currentPrice.source,
+      },
+    });
+  } catch (error) {
+    console.warn("No se pudo persistir el precio del oracle en BD:", error.message);
   }
-  
-  // Para otras monedas, no soportadas - solo USDC/ARS
-  throw new Error(`Solo se soporta USDC/ARS a través del Oracle de Avalanche. Solicitado: ${currency}/${baseCurrency}`);
+
+  return currentPrice;
 }
 
-// Función para actualizar precios periódicamente - ORACLE DE AVALANCHE
 async function updatePrices() {
-  console.log('🔄 Actualizando precios...');
-  
-  // Solo actualizar USDC usando Oracle de Avalanche
-  try {
-    const priceData = await getCurrentPrice('USDC', 'ARS');
-    console.log(`✅ Precio USDC/ARS actualizado: $${priceData.price} (${priceData.source})`);
-  } catch (error) {
-    console.error(`❌ Error actualizando USDC/ARS:`, error.message);
+  const mint = process.env.SOLANA_USDC_MINT;
+  if (!mint) {
+    console.warn("SOLANA_USDC_MINT no est? definido. Se omite la actualizaci?n autom?tica del oracle.");
+    return;
   }
-}
 
-// Iniciar actualización automática de precios
-function startPriceOracle() {
-  console.log('🚀 Iniciando oráculo de precios (Avalanche)...');
-  
-  // Actualizar precios cada 30 segundos
-  cron.schedule('*/30 * * * * *', updatePrices);
-  
-  // Actualizar precios al inicio
-  updatePrices();
-  
-  console.log('✅ Oráculo de precios iniciado');
-}
-
-// Función para obtener historial de precios
-async function getPriceHistory(currency, baseCurrency = 'ARS', hours = 24) {
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-  
-  const prices = await prisma.priceOracle.findMany({
-    where: {
-      currency,
-      baseCurrency,
-      timestamp: {
-        gte: since
+  if (isSyncEnabled()) {
+    const minMs = parseInt(process.env.CRIPTOYA_MIN_CHAIN_INTERVAL_MS || "60000", 10);
+    const now = Date.now();
+    const firstRun = lastCriptoYaChainSyncAt === 0;
+    const elapsedOk = now - lastCriptoYaChainSyncAt >= minMs;
+    if (firstRun || elapsedOk) {
+      try {
+        const sync = await syncOracleFromCriptoYa();
+        if (sync.success) {
+          lastCriptoYaChainSyncAt = now;
+          priceCache.clear();
+          console.log(
+            `[CriptoYa] Oracle on-chain actualizado: ${sync.humanPrice} ARS/USDC | tx ${sync.explorerUrl}`
+          );
+        } else if (!sync.skipped) {
+          console.error("[CriptoYa] Fallo al sincronizar oracle:", sync.error, sync.phase || "");
+        }
+      } catch (error) {
+        console.error("[CriptoYa] Error en syncOracleFromCriptoYa:", error.message);
       }
-    },
-    orderBy: {
-      timestamp: 'desc'
-    },
-    take: 100
+    }
+  }
+
+  try {
+    const priceData = await getCurrentPrice("USDC", "ARS");
+    const label = isSyncEnabled() ? "(cadena; alimentada por CriptoYa si el sync OK)" : "(cadena)";
+    console.log(`Precio USDC/ARS ${label}: ${priceData.price}`);
+  } catch (error) {
+    console.error("Error actualizando precio desde Solana:", error.message);
+  }
+}
+
+function startPriceOracle() {
+  console.log("Iniciando oráculo de precios Solana/Anchor...");
+  if (isSyncEnabled()) {
+    console.log(
+      "CriptoYa → oracle on-chain ACTIVO (CRIPTOYA_ORACLE_SYNC_ENABLED=true). Intervalo mínimo entre txs:",
+      `${parseInt(process.env.CRIPTOYA_MIN_CHAIN_INTERVAL_MS || "60000", 10) / 1000}s`
+    );
+  }
+  cron.schedule("*/30 * * * * *", updatePrices);
+  updatePrices().catch((error) => {
+    console.error("? Error en actualizaci?n inicial del oracle:", error.message);
   });
-
-  return prices;
 }
 
-// Función específica para conversión ARS → Crypto (MidatoPay) - ORACLE DE AVALANCHE
-async function convertARSToCrypto(amountARS, targetCrypto, network = 'avalanche') {
-  try {
-    const normalizedNetwork = network.toLowerCase();
-    
-    // 🚀 ORACLE de Avalanche para USDC
-    if (targetCrypto === 'USDC') {
-      console.log(`🔍 Convirtiendo ${amountARS} ARS a USDC usando Oracle de Avalanche...`);
-      
-      const quoteResult = await avalancheOracle.getARSToUSDTQuote(amountARS);
-      
-      return {
-        amountARS,
-        targetCrypto,
-        network: normalizedNetwork,
-        cryptoAmount: quoteResult.usdtAmount,
-        exchangeRate: quoteResult.rate,
-        source: 'AVALANCHE_ORACLE',
-        timestamp: quoteResult.timestamp,
-        oracleAddress: avalancheOracle.oracleAddress,
-        // Agregar margen de seguridad del 2%
-        cryptoAmountWithMargin: quoteResult.usdtAmount * 0.98
-      };
-    }
-    
-    // Para otras criptomonedas, no soportadas
-    throw new Error(`Solo se soporta conversión a USDC. Solicitado: ${targetCrypto}`);
-  } catch (error) {
-    console.error(`Error convirtiendo ${amountARS} ARS a ${targetCrypto} en red ${network}:`, error.message);
-    throw error;
+async function getPriceHistory(currency, baseCurrency = "ARS", hours = 24) {
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  return prisma.priceOracle.findMany({
+    where: {
+      currency: String(currency).toUpperCase(),
+      baseCurrency: String(baseCurrency).toUpperCase(),
+      timestamp: { gte: since },
+    },
+    orderBy: { timestamp: "desc" },
+    take: 100,
+  });
+}
+
+async function convertARSToCrypto(amountARS, targetCrypto, network = "solana") {
+  const normalizedCrypto = String(targetCrypto || "").toUpperCase();
+  const tokenMint = getConfiguredMint(normalizedCrypto);
+  if (!tokenMint) {
+    throw new Error(`No se soporta ${normalizedCrypto} o falta configurar su mint en el backend.`);
   }
+
+  const solana = getSolanaService();
+  const quote = await solana.quoteArsToToken(amountARS, tokenMint);
+
+  return {
+    amountARS: Number(amountARS),
+    targetCrypto: normalizedCrypto,
+    network: String(network || "solana").toLowerCase(),
+    cryptoAmount: quote.tokenAmount,
+    cryptoAmountSmallestUnits: quote.tokenAmountSmallestUnits,
+    exchangeRate: quote.priceArs,
+    source: quote.source,
+    timestamp: quote.fetchedAt,
+    tokenMint: quote.tokenMint,
+    decimals: quote.decimals,
+    cryptoAmountWithMargin: Number((quote.tokenAmount * 0.98).toFixed(quote.decimals)),
+  };
 }
 
-// Función para obtener rate con margen de seguridad - ORACLE DE AVALANCHE
 async function getExchangeRateWithMargin(targetCrypto, marginPercent = 2) {
-  try {
-    // Solo soportamos USDC
-    if (targetCrypto !== 'USDC') {
-      throw new Error(`Solo se soporta USDC a través del Oracle de Avalanche. Solicitado: ${targetCrypto}`);
-    }
-    
-    const priceData = await getCurrentPrice(targetCrypto, 'ARS');
-    const margin = marginPercent / 100;
-    
-    return {
-      baseRate: priceData.price,
-      rateWithMargin: priceData.price * (1 + margin),
-      marginPercent,
-      targetCrypto,
-      source: priceData.source,
-      timestamp: priceData.timestamp
-    };
-  } catch (error) {
-    console.error(`Error obteniendo rate con margen para ${targetCrypto}:`, error.message);
-    throw error;
-  }
+  const priceData = await getCurrentPrice(targetCrypto, "ARS");
+  const margin = Number(marginPercent) / 100;
+
+  return {
+    baseRate: priceData.price,
+    rateWithMargin: priceData.price * (1 + margin),
+    marginPercent: Number(marginPercent),
+    targetCrypto: String(targetCrypto).toUpperCase(),
+    source: priceData.source,
+    timestamp: priceData.timestamp,
+  };
 }
 
-// Función para validar si un rate está dentro del rango aceptable - ORACLE DE AVALANCHE
 async function validateExchangeRate(targetCrypto, expectedRate, tolerancePercent = 5) {
-  try {
-    // Solo soportamos USDC
-    if (targetCrypto !== 'USDC') {
-      throw new Error(`Solo se soporta USDC a través del Oracle de Avalanche. Solicitado: ${targetCrypto}`);
-    }
-    
-    const currentRate = await getCurrentPrice(targetCrypto, 'ARS');
-    const tolerance = tolerancePercent / 100;
-    const minRate = expectedRate * (1 - tolerance);
-    const maxRate = expectedRate * (1 + tolerance);
-    
-    const isValid = currentRate.price >= minRate && currentRate.price <= maxRate;
-    
-    return {
-      isValid,
-      currentRate: currentRate.price,
-      expectedRate,
-      tolerancePercent,
-      minRate,
-      maxRate,
-      deviation: Math.abs(currentRate.price - expectedRate) / expectedRate * 100
-    };
-  } catch (error) {
-    console.error(`Error validando rate para ${targetCrypto}:`, error.message);
-    throw error;
-  }
+  const currentRate = await getCurrentPrice(targetCrypto, "ARS");
+  const tolerance = Number(tolerancePercent) / 100;
+  const minRate = Number(expectedRate) * (1 - tolerance);
+  const maxRate = Number(expectedRate) * (1 + tolerance);
+
+  return {
+    isValid: currentRate.price >= minRate && currentRate.price <= maxRate,
+    currentRate: currentRate.price,
+    expectedRate: Number(expectedRate),
+    tolerancePercent: Number(tolerancePercent),
+    minRate,
+    maxRate,
+    deviation: Math.abs(currentRate.price - Number(expectedRate)) / Number(expectedRate) * 100,
+  };
 }
 
-// Función para obtener balance USDC usando el contrato Avalanche
 async function getUSDTBalance(accountAddress) {
-  try {
-    console.log(`🔍 Obteniendo balance USDC para ${accountAddress}...`);
-    
-    // TODO: Implementar obtención de balance desde contrato ERC20 en Avalanche
-    // Por ahora retornamos un placeholder
-    return {
-      balance: 0,
-      balance_u256: '0',
-      accountAddress,
-      tokenAddress: '0xc926ace38E79e987fbC8CF142157A7C16DE2a6E1',
-      source: 'AVALANCHE_USDC',
-      timestamp: new Date()
-    };
-  } catch (error) {
-    console.error('Error obteniendo balance USDC:', error.message);
-    throw error;
+  const tokenMint = process.env.SOLANA_USDC_MINT;
+  if (!tokenMint) {
+    throw new Error("SOLANA_USDC_MINT no est? definido.");
   }
+
+  const solana = getSolanaService();
+  const balance = await solana.getTokenBalance(accountAddress, tokenMint);
+  return {
+    ...balance,
+    source: "SOLANA_SPL_TOKEN",
+    timestamp: new Date(),
+  };
 }
 
-// Función para verificar estado del Oracle
 async function getOracleStatus() {
   try {
-    console.log('🔍 Verificando estado del Oracle de Avalanche...');
-    
-    const statusResult = await avalancheOracle.checkOracleStatus();
-    
+    const solana = getSolanaService();
+    const oracleConfig = await solana.fetchOracleConfig();
+    const tokenMint = process.env.SOLANA_USDC_MINT;
+    const currentPrice = tokenMint ? await solana.fetchOraclePrice(tokenMint) : null;
+
     return {
-      isActive: statusResult.isActive,
-      currentRate: statusResult.currentRate,
-      oracleAddress: statusResult.oracleAddress,
-      usdtTokenAddress: statusResult.usdtTokenAddress,
-      status: statusResult.status,
-      timestamp: statusResult.timestamp,
-      error: statusResult.error || null
+      isActive: Boolean(oracleConfig && oracleConfig.active),
+      currentRate: currentPrice ? currentPrice.priceArs : null,
+      oracleProgramId: solana.oracleProgramId.toBase58(),
+      oracleConfig,
+      tokenMint: tokenMint || null,
+      priceAccount: currentPrice,
+      status: oracleConfig ? "READY" : "NOT_INITIALIZED",
+      timestamp: new Date(),
+      criptoYaOracleSyncEnabled: isSyncEnabled(),
     };
   } catch (error) {
-    console.error('Error verificando estado del Oracle:', error.message);
     return {
       isActive: false,
       currentRate: null,
-      oracleAddress: avalancheOracle.oracleAddress,
-      usdtTokenAddress: '0xc926ace38E79e987fbC8CF142157A7C16DE2a6E1',
-      status: 'ERROR',
+      oracleProgramId: process.env.SOLANA_ORACLE_PROGRAM_ID || null,
+      tokenMint: process.env.SOLANA_USDC_MINT || null,
+      status: "ERROR",
       error: error.message,
-      timestamp: new Date()
+      timestamp: new Date(),
+      criptoYaOracleSyncEnabled: isSyncEnabled(),
     };
   }
 }
@@ -272,6 +256,6 @@ module.exports = {
   getExchangeRateWithMargin,
   validateExchangeRate,
   getUSDTBalance,
-  getOracleStatus
+  getOracleStatus,
+  syncOracleFromCriptoYa,
 };
-
