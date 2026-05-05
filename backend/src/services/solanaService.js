@@ -21,8 +21,9 @@ const {
   createAssociatedTokenAccountInstruction,
 } = require("@solana/spl-token");
 
-const gatewayIdl = require("../../../contracts/target/idl/payment_gateway.json");
-const oracleIdl = require("../../../contracts/target/idl/dynamic_fx_oracle.json");
+const idlDir = path.join(__dirname, "..", "..", "contracts", "target", "idl");
+const gatewayIdl = require(path.join(idlDir, "payment_gateway.json"));
+const oracleIdl = require(path.join(idlDir, "dynamic_fx_oracle.json"));
 
 const DEFAULT_COMMITMENT = process.env.SOLANA_COMMITMENT || "confirmed";
 const DEFAULT_CLUSTER = (process.env.SOLANA_CLUSTER || "testnet").toLowerCase();

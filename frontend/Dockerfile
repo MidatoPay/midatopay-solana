@@ -3,10 +3,12 @@ FROM node:18-alpine
 # Build arguments para variables de entorno en tiempo de build
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 # Establecer como variables de entorno para el build
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 # Establecer directorio de trabajo
 WORKDIR /app

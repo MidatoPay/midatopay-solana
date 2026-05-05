@@ -1,0 +1,383 @@
+{
+  "address": "DpVyTLLtthqVWsiGjoz3hWnvF8ugHTqhRsB1SY9Rp5zu",
+  "metadata": {
+    "name": "payment_gateway",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "gateway_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  116,
+                  101,
+                  119,
+                  97,
+                  121,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "admin",
+          "type": "pubkey"
+        },
+        {
+          "name": "oracle_program",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "pay",
+      "discriminator": [
+        119,
+        18,
+        216,
+        65,
+        192,
+        117,
+        122,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "gateway_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  116,
+                  101,
+                  119,
+                  97,
+                  121,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "merchant"
+        },
+        {
+          "name": "token_mint"
+        },
+        {
+          "name": "gateway_vault",
+          "writable": true
+        },
+        {
+          "name": "merchant_token_account",
+          "writable": true
+        },
+        {
+          "name": "processed_payment",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  99,
+                  101,
+                  115,
+                  115,
+                  101,
+                  100,
+                  95,
+                  112,
+                  97,
+                  121,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "payment_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_config"
+        },
+        {
+          "name": "oracle_price"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_ars",
+          "type": "u64"
+        },
+        {
+          "name": "payment_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GatewayConfig",
+      "discriminator": [
+        91,
+        247,
+        66,
+        27,
+        24,
+        1,
+        48,
+        176
+      ]
+    },
+    {
+      "name": "ProcessedPayment",
+      "discriminator": [
+        199,
+        201,
+        31,
+        121,
+        168,
+        129,
+        240,
+        223
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "PaymentProcessed",
+      "discriminator": [
+        22,
+        109,
+        191,
+        213,
+        83,
+        63,
+        120,
+        219
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "AdminZero",
+      "msg": "admin=0"
+    },
+    {
+      "code": 6001,
+      "name": "OracleZero",
+      "msg": "oracle=0"
+    },
+    {
+      "code": 6002,
+      "name": "OnlyAdmin",
+      "msg": "only admin"
+    },
+    {
+      "code": 6003,
+      "name": "AmountZero",
+      "msg": "amount=0"
+    },
+    {
+      "code": 6004,
+      "name": "OraclePaused",
+      "msg": "oracle paused"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidOracleOwner",
+      "msg": "invalid oracle owner"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidOracleMint",
+      "msg": "invalid oracle mint"
+    },
+    {
+      "code": 6007,
+      "name": "DecimalsMismatch",
+      "msg": "decimals mismatch"
+    },
+    {
+      "code": 6008,
+      "name": "QuoteZero",
+      "msg": "quote=0"
+    },
+    {
+      "code": 6009,
+      "name": "NotEnoughBalance",
+      "msg": "not enough balance"
+    },
+    {
+      "code": 6010,
+      "name": "MathOverflow",
+      "msg": "math overflow"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidOracleData",
+      "msg": "invalid oracle data"
+    }
+  ],
+  "types": [
+    {
+      "name": "GatewayConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle_program",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentProcessed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merchant",
+            "type": "pubkey"
+          },
+          {
+            "name": "token",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProcessedPayment",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "merchant",
+            "type": "pubkey"
+          },
+          {
+            "name": "token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
