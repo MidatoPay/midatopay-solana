@@ -63,4 +63,3 @@ echo -e "${GREEN}📊 Checking container status...${NC}"
 docker compose -f $COMPOSE_FILE ps
 
 echo -e "${GREEN}📋 View logs with: docker compose -f $COMPOSE_FILE logs -f${NC}"
-

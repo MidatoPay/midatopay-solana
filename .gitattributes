@@ -1,0 +1,3 @@
+# Scripts y Compose: siempre LF (evita "cannot execute: required file not found" en Linux)
+*.sh text eol=lf
+docker-compose*.yml text eol=lf
