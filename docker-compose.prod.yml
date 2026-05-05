@@ -37,11 +37,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # En producción, NO montar volúmenes de código
-    # Solo montar volúmenes para datos persistentes
-    # volumes:
-    #   - ./backend:/app  # ❌ NO en producción
-    #   - /app/node_modules
+    # Keypair Solana (admin): NO va en Git. En el host: chmod 600 y chown 1001:1001.
+    # En backend/.env: SOLANA_WALLET_PATH=/app/secrets/solana-keypair.json
+    volumes:
+      - ${SOLANA_KEYPAIR_HOST_PATH:-/home/ubuntu/.secrets/midatopay-solana-keypair.json}:/app/secrets/solana-keypair.json:ro
     networks:
       - midatopay-network-prod
     restart: unless-stopped
