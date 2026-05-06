@@ -103,6 +103,7 @@ Thumbs.db
 
 # Docker
 .dockerignore
+!backend/.dockerignore
 
 # Prisma
 prisma/migrations/

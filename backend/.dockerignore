@@ -1,0 +1,7 @@
+# No incluir secretos ni entorno local en la imagen (Compose inyecta env en runtime).
+.env
+.env.*
+!.env.example
+
+node_modules
+npm-debug.log*
