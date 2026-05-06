@@ -58,11 +58,13 @@ services:
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://midatopay.com}
         - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-wss://midatopay.com/ws}
+        - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     container_name: midatopay-frontend-prod
     env_file:
       - ./frontend/.env.production
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
