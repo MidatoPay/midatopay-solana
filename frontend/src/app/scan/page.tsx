@@ -22,18 +22,14 @@ export default function QRScannerPage() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [isScannerReady, setIsScannerReady] = useState(false)
   const [scanInterval, setScanInterval] = useState<NodeJS.Timeout | null>(null)
-  const [isInitialized, setIsInitialized] = useState(false)
+  const [mediaStream, setMediaStream] = useState<MediaStream | null>(null)
 
-  // Inicializar cámara usando API nativa
+  // Inicializar cámara (patrón `cancelled` para React Strict Mode)
   useEffect(() => {
-    // Evitar múltiples inicializaciones
-    if (isInitialized) return
-    
+    let cancelled = false
+
     const initCamera = async () => {
       try {
-         
-        setIsInitialized(true)
-        
         // Verificar si estamos en un contexto seguro (HTTPS o localhost)
         const isSecureContext = typeof window !== 'undefined' && (
           window.isSecureContext === true || 
@@ -69,47 +65,22 @@ export default function QRScannerPage() {
 
         // Solicitar acceso a la cámara
          
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment', // Usar cámara trasera si está disponible
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
             width: { ideal: 1280 },
-            height: { ideal: 720 }
-          } 
+            height: { ideal: 720 },
+          },
         })
-        
-         
-         
-         
-        
-        setHasPermission(true)
-        setIsScannerReady(true)
-        
-        // Conectar stream al video
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          
-          // Esperar a que el video esté completamente cargado
-          videoRef.current.onloadedmetadata = () => {
-             
-            videoRef.current?.play().then(() => {
-               
-              setIsScanning(true)
-              // Iniciar detección de QR después de un pequeño delay
-              setTimeout(() => {
-                startQRDetection()
-              }, 1000)
-            }).catch((err) => {
-              console.error('Error starting video playback:', err)
-              setError('Error iniciando la cámara')
-            })
-          }
-          
-          videoRef.current.onerror = (err) => {
-            console.error('Video error:', err)
-            setError('Error con el video de la cámara')
-          }
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
         }
-        
+
+        setHasPermission(true)
+        setMediaStream(stream)
+        setIsScannerReady(true)
       } catch (err) {
         console.error('Error accediendo a la cámara:', err)
         const error = err as any
@@ -124,17 +95,13 @@ export default function QRScannerPage() {
           // Intentar con configuración más básica
           try {
             const basicStream = await navigator.mediaDevices.getUserMedia({ video: true })
-            if (videoRef.current) {
-              videoRef.current.srcObject = basicStream
-              videoRef.current.onloadedmetadata = () => {
-                videoRef.current?.play().then(() => {
-                  setIsScanning(true)
-                  setTimeout(() => startQRDetection(), 1000)
-                })
-              }
+            if (cancelled) {
+              basicStream.getTracks().forEach((t) => t.stop())
+              return
             }
             setError(null)
             setHasPermission(true)
+            setMediaStream(basicStream)
             setIsScannerReady(true)
             return
           } catch (retryErr) {
@@ -150,17 +117,72 @@ export default function QRScannerPage() {
     initCamera()
 
     return () => {
-      // Limpiar stream al desmontar
-      if (videoRef.current && videoRef.current.srcObject) {
+      cancelled = true
+      if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream
-        stream.getTracks().forEach(track => track.stop())
+        stream.getTracks().forEach((track) => track.stop())
+        videoRef.current.srcObject = null
       }
-      // Limpiar intervalo de detección
-      if (scanInterval) {
-        clearInterval(scanInterval)
+      setMediaStream((prev) => {
+        prev?.getTracks().forEach((t) => t.stop())
+        return null
+      })
+    }
+  }, [])
+
+  // Enlazar MediaStream al <video> después del paint (evita pantalla negra: el <video> no existía al resolver getUserMedia)
+  useEffect(() => {
+    if (!mediaStream || !isScannerReady) return
+
+    let raf = 0
+    let cancelled = false
+    let attachAttempts = 0
+
+    const attach = () => {
+      if (cancelled) return
+      const video = videoRef.current
+      if (!video) {
+        if (attachAttempts++ > 90) return
+        raf = requestAnimationFrame(attach)
+        return
+      }
+
+      video.srcObject = mediaStream
+      video.muted = true
+      video.setAttribute('playsinline', '')
+      video.onerror = () => setError('Error con el video de la cámara')
+
+      const onMeta = () => {
+        if (cancelled) return
+        video
+          .play()
+          .then(() => {
+            if (cancelled) return
+            setIsScanning(true)
+            setTimeout(() => startQRDetection(), 300)
+          })
+          .catch((err) => {
+            console.error('Error starting video playback:', err)
+            setError('Error iniciando la cámara')
+          })
+      }
+      video.onloadedmetadata = onMeta
+      if (video.readyState >= 1) onMeta()
+    }
+
+    attachAttempts = 0
+    raf = requestAnimationFrame(attach)
+
+    return () => {
+      cancelled = true
+      if (raf) cancelAnimationFrame(raf)
+      const video = videoRef.current
+      if (video) {
+        video.onloadedmetadata = null
+        video.onerror = null
       }
     }
-  }, [isInitialized]) // Solo ejecutar cuando cambie isInitialized
+  }, [mediaStream, isScannerReady])
 
   const startQRDetection = () => {
     if (!videoRef.current || !canvasRef.current) return
@@ -449,6 +471,8 @@ export default function QRScannerPage() {
                         ref={videoRef}
                         className="w-full aspect-video rounded-lg bg-black"
                         playsInline
+                        muted
+                        autoPlay
                       />
                       {/* Canvas oculto para detección de QR */}
                       <canvas
