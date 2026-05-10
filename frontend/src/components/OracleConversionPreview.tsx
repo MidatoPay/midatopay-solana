@@ -28,13 +28,13 @@ export function OracleConversionPreview({
 
     const timeoutId = setTimeout(async () => {
       try {
-        console.log('🔄 Consultando Oracle real para:', amountARS, 'ARS');
+         ;
         
         const result = await convertARSToCrypto(amountARS, targetCrypto);
         setConversionResult(result);
         
         if (result) {
-          console.log('✅ Oracle response:', result);
+           ;
         }
       } catch (err) {
         console.error('❌ Oracle error:', err);

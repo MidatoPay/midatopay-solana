@@ -35,8 +35,8 @@ router.post('/create', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Error de validación:', errors.array());
-      console.log('📝 Datos recibidos:', req.body);
+       
+       ;
       return res.status(400).json({
         error: 'Datos inválidos',
         message: 'Por favor, verifica los datos ingresados',
@@ -372,7 +372,7 @@ async function simulateLiquidation(transaction) {
   // Simular delay de conversión
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  console.log(`💰 Liquidación simulada: ${transaction.finalAmount} ${transaction.finalCurrency} para el comercio`);
+   ;
   
   // En producción, aquí se haría la conversión real y transferencia bancaria
   return true;

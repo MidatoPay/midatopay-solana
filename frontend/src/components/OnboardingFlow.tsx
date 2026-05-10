@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { useUser, useAuth } from '@clerk/nextjs'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '@/store/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,23 +22,17 @@ import { useUserProfile } from '@/hooks/useUserProfile'
  */
 export function OnboardingFlow() {
   const router = useRouter()
-  const { user: clerkUser } = useUser()
-  const { getToken } = useAuth()
+  const jwtToken = useAuthStore((s) => s.token)
+  const isJwtAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const { reloadProfile } = useUserProfile()
   const [step, setStep] = useState<'business-name' | 'creating-wallet' | 'complete'>('business-name')
   const [businessName, setBusinessName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
 
-  // Obtener token de Clerk
-  const getClerkToken = async (): Promise<string | null> => {
-    if (!clerkUser) return null
-    try {
-      return await getToken()
-    } catch (error) {
-      console.error('Error obteniendo token:', error)
-      return null
-    }
+  const getBearer = (): string | null => {
+    if (jwtToken && isJwtAuthenticated) return jwtToken
+    return null
   }
 
   // Paso 1: Guardar nombre del negocio
@@ -53,14 +47,13 @@ export function OnboardingFlow() {
     setIsSubmitting(true)
 
     try {
-      const token = await getClerkToken()
+      const token = getBearer()
       if (!token) {
         throw new Error('No se pudo obtener el token de autenticación')
       }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      
-      // Actualizar nombre del negocio
+
       const response = await fetch(`${apiUrl}/api/auth/profile`, {
         method: 'PUT',
         headers: {
@@ -90,13 +83,13 @@ export function OnboardingFlow() {
   // Paso 2: Crear wallet automáticamente
   const handleCreateWallet = async () => {
     try {
-      const token = await getClerkToken()
+      const token = getBearer()
       if (!token) {
         throw new Error('No se pudo obtener el token de autenticación')
       }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-      
+
       // Crear wallet automáticamente
       const response = await fetch(`${apiUrl}/api/auth/create-wallet`, {
         method: 'POST',

@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Iniciando seed de la base de datos...');
+   ;
 
   // Crear usuario administrador
   const adminPassword = await bcrypt.hash('admin123', 12);
@@ -20,7 +20,7 @@ async function main() {
     }
   });
 
-  console.log('✅ Usuario administrador creado:', admin.email);
+   ;
 
   // Crear usuario comercio de ejemplo
   const merchantPassword = await bcrypt.hash('merchant123', 12);
@@ -37,7 +37,7 @@ async function main() {
     }
   });
 
-  console.log('✅ Usuario comercio creado:', merchant.email);
+   ;
 
   // Crear precios de ejemplo - Oracle de Polygon
   const prices = [
@@ -55,7 +55,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Precios de ejemplo creados');
+   ;
 
   // Crear pago de ejemplo
   const examplePayment = await prisma.payment.create({
@@ -70,12 +70,12 @@ async function main() {
     }
   });
 
-  console.log('✅ Pago de ejemplo creado:', examplePayment.id);
+   ;
 
-  console.log('🎉 Seed completado exitosamente!');
-  console.log('\n📋 Usuarios creados:');
-  console.log('👤 Admin: admin@midatopay.com / admin123');
-  console.log('🏪 Comercio: barista@cafe.com / merchant123');
+   ;
+   ;
+   ;
+   ;
 }
 
 main()

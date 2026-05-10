@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import { useAuthStore } from '@/store/auth'
@@ -19,7 +18,6 @@ const font = { fontFamily: 'Kufam, sans-serif' } as const
 export default function ConfiguracionPage() {
   const { t } = useLanguage()
   const { user, isLoading, error: profileError, reloadProfile } = useUserProfile()
-  const { getToken, isSignedIn, isLoaded: clerkLoaded } = useClerkAuth()
   const jwtToken = useAuthStore((s) => s.token)
   const isJwtAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
@@ -36,14 +34,9 @@ export default function ConfiguracionPage() {
     }
   }, [user])
 
-  const getBearerToken = async (): Promise<string | null> => {
+  const getBearerToken = (): string | null => {
     if (jwtToken && isJwtAuthenticated) return jwtToken
-    if (!clerkLoaded || !isSignedIn) return null
-    try {
-      return await getToken()
-    } catch {
-      return null
-    }
+    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +55,7 @@ export default function ConfiguracionPage() {
       return
     }
 
-    const token = await getBearerToken()
+    const token = getBearerToken()
     if (!token) {
       toast.error(pg.sessionRequired)
       return

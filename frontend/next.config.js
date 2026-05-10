@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Evita que Next reinyecte `.next/types/**/*.ts` en tsconfig en cada build (tipado estricto de rutas).
+  experimental: {
+    typedRoutes: false,
+  },
   images: {
     domains: ['localhost'],
   },

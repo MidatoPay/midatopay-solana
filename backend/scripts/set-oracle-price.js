@@ -17,7 +17,7 @@ if (!tokenMint) {
 (async () => {
   const solana = getSolanaService();
   const signature = await solana.setOraclePrice(tokenMint, priceArs);
-  console.log("Oracle price updated:", signature, solana.getExplorerUrl(signature));
+   
 })().catch((error) => {
   console.error("Setting oracle price failed:", error);
   process.exit(1);

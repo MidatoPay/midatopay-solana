@@ -123,18 +123,18 @@ class EMVQRParser {
   // Parsear QR simplificado
   parseEMVQR(qrData) {
     try {
-      console.log('🔍 Parsing QR Data:', qrData);
-      console.log('🔍 QR Data length:', qrData.length);
+       ;
+       ;
       
       const parsed = this.parseTLV(qrData);
-      console.log('🔍 TLV Parsed:', parsed);
+       ;
       
       // Verificar CRC
       if (!this.validateCRC(qrData)) {
         console.error('❌ CRC validation failed');
         throw new Error('Invalid CRC');
       }
-      console.log('✅ CRC validation passed');
+       ;
       
       // Extraer los 3 campos
       const result = {
@@ -187,7 +187,7 @@ class EMVQRParser {
     // Excluir los últimos 4 caracteres que son el CRC
     const dataWithoutCRC = data.substring(0, data.length - 4);
     
-    console.log('🔍 Parsing TLV (sin CRC):', dataWithoutCRC);
+     
     
     while (i < dataWithoutCRC.length) {
       if (i + 2 > dataWithoutCRC.length) break;
@@ -208,11 +208,11 @@ class EMVQRParser {
       const value = dataWithoutCRC.substring(i, i + length);
       i += length;
       
-      console.log(`🔍 TLV Field: tag=${tag}, length=${length}, value=${value}`);
+       ;
       result[tag] = value;
     }
     
-    console.log('🔍 TLV Result:', result);
+     ;
     return result;
   }
 

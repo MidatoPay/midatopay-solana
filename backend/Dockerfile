@@ -51,5 +51,5 @@ RUN chown -R nodejs:nodejs /app
 # Cambiar a usuario no-root
 USER nodejs
 
-# Comando por defecto
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["npm", "start"]

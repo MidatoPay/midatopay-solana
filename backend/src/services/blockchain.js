@@ -33,7 +33,7 @@ async function simulateBlockchainTransaction(txHash, transaction) {
 // Simular monitoreo de direcciones de wallet
 async function monitorWalletAddress(address, currency) {
   // En producción, esto usaría webhooks o polling de la blockchain
-  console.log(`🔍 Monitoreando dirección ${address} para ${currency}`);
+   ;
   
   return {
     address,
@@ -96,7 +96,7 @@ async function simulateBankTransfer(amount, currency, accountDetails) {
   // Simular delay de transferencia bancaria
   await new Promise(resolve => setTimeout(resolve, 3000));
   
-  console.log(`🏦 Transferencia simulada: ${amount} ${currency} a ${accountDetails.accountNumber}`);
+   ;
   
   return {
     success: true,

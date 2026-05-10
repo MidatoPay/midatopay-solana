@@ -44,7 +44,7 @@ class MidatoPayAPI {
     return null;
   }
 
-  // Generar QR (opcional: bearer de Clerk vía getToken() si no hay JWT en localStorage)
+  // Generar QR (Authorization: Bearer JWT)
   async generatePaymentQR(
     data: {
       amountARS: number;

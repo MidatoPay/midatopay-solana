@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import { useAuthStore } from '@/store/auth'
 
 interface Transaction {
@@ -40,21 +39,14 @@ export function useTransactions() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const jwtToken = useAuthStore((s) => s.token)
-  const { getToken, isSignedIn, isLoaded: clerkLoaded } = useClerkAuth()
+  const isJwtAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      let bearer: string | null = jwtToken ?? null
-      if (!bearer && clerkLoaded && isSignedIn && getToken) {
-        try {
-          bearer = (await getToken()) ?? null
-        } catch {
-          bearer = null
-        }
-      }
+      const bearer = jwtToken && isJwtAuthenticated ? jwtToken : null
 
       if (!bearer) {
         setTransactions([])
@@ -84,7 +76,7 @@ export function useTransactions() {
     } finally {
       setLoading(false)
     }
-  }, [jwtToken, clerkLoaded, isSignedIn, getToken])
+  }, [jwtToken, isJwtAuthenticated])
 
   useEffect(() => {
     fetchTransactions()

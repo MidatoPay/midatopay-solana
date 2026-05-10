@@ -31,7 +31,7 @@ export default function QRScannerPage() {
     
     const initCamera = async () => {
       try {
-        console.log('Starting camera...')
+         
         setIsInitialized(true)
         
         // Verificar si estamos en un contexto seguro (HTTPS o localhost)
@@ -68,7 +68,7 @@ export default function QRScannerPage() {
         }
 
         // Solicitar acceso a la cámara
-        console.log('Requesting camera access...')
+         
         const stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: 'environment', // Usar cámara trasera si está disponible
@@ -77,9 +77,9 @@ export default function QRScannerPage() {
           } 
         })
         
-        console.log('Stream obtained:', stream)
-        console.log('Active tracks:', stream.getTracks().length)
-        console.log('Video track:', stream.getVideoTracks()[0])
+         
+         
+         
         
         setHasPermission(true)
         setIsScannerReady(true)
@@ -90,9 +90,9 @@ export default function QRScannerPage() {
           
           // Esperar a que el video esté completamente cargado
           videoRef.current.onloadedmetadata = () => {
-            console.log('Video metadata loaded, starting playback...')
+             
             videoRef.current?.play().then(() => {
-              console.log('Video playback started successfully')
+               
               setIsScanning(true)
               // Iniciar detección de QR después de un pequeño delay
               setTimeout(() => {
@@ -189,7 +189,7 @@ export default function QRScannerPage() {
           const code = jsQR(imageData.data, imageData.width, imageData.height)
 
           if (code) {
-            console.log('QR Code detectado:', code.data)
+             
             setScannedData(code.data)
             setIsScanning(false)
             clearInterval(interval)
@@ -218,8 +218,8 @@ export default function QRScannerPage() {
 
   const processScannedQR = async (qrData: string) => {
     try {
-      console.log('🔍 Procesando QR:', qrData)
-      console.log('🔍 QR Data length:', qrData.length)
+       
+       
       
       // Validar que el QR no esté vacío
       if (!qrData || qrData.trim().length === 0) {
@@ -244,8 +244,8 @@ export default function QRScannerPage() {
         return
       }
 
-      console.log('✅ Pago verificado:', result.data)
-      console.log('🔍 Blockchain transaction:', result.data.paymentData.blockchainTransaction)
+       
+       
 
       // Preparar parámetros base
       const baseParams = {
@@ -260,8 +260,8 @@ export default function QRScannerPage() {
       // Mostrar los datos de la transacción blockchain
       if (result.data.paymentData.blockchainTransaction && result.data.paymentData.blockchainTransaction.hash) {
         const tx = result.data.paymentData.blockchainTransaction
-        console.log('✅ Transaction hash:', tx.hash)
-        console.log('✅ Explorer URL:', tx.explorerUrl)
+         
+         
         
         toast.success(`Transaction executed! Hash: ${tx.hash}`)
         
@@ -291,7 +291,7 @@ export default function QRScannerPage() {
 
   const parseEMVQR = (qrData: string) => {
     try {
-      console.log('🔍 Parsing QR:', qrData)
+       
       
       // Parsear TLV data del QR EMVCo
       // El QR contiene: 01650x[merchant_address]0205[amount]0326[payment_id]17C1
@@ -323,7 +323,7 @@ export default function QRScannerPage() {
       const amount = parseInt(amountMatch[1])
       const paymentId = paymentIdMatch[0] // Usar el match completo que incluye 'pay_'
       
-      console.log('📱 QR parsed:', { merchantAddress, amount, paymentId })
+       
       
       return {
         merchantAddress,

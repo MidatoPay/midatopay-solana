@@ -16,7 +16,6 @@
     "solana:sync-criptoya": "node scripts/sync-criptoya-oracle.js"
   },
   "dependencies": {
-    "@clerk/backend": "^2.22.0",
     "@coral-xyz/anchor": "^0.30.1",
     "@prisma/client": "5.22.0",
     "@solana/spl-token": "^0.4.8",
@@ -35,7 +34,6 @@
     "prisma": "5.22.0",
     "qrcode": "^1.5.4",
     "resend": "^3.5.0",
-    "svix": "^1.81.0",
     "uuid": "^9.0.1",
     "ws": "^8.14.2"
   },

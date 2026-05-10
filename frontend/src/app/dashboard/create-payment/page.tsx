@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth as useClerkAuth } from '@clerk/nextjs'
-import { useClerkSafe } from '@/hooks/useClerkSafe'
 import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,12 +25,7 @@ import { useOracleConversion } from '@/hooks/useOracleConversion'
 
 export default function CreatePaymentPage() {
   const { user, isAuthenticated, hasHydrated } = useAuth()
-  const { isSignedIn, isLoaded: isClerkLoaded, getToken } = useClerkAuth()
-  const { isConfigured: isClerkConfigured } = useClerkSafe()
   const router = useRouter()
-
-  const isAuthenticatedAny =
-    isAuthenticated || (isClerkConfigured && isClerkLoaded && isSignedIn)
   const { t, language } = useLanguage()
   const [isCreating, setIsCreating] = useState(false)
   const [showQRModal, setShowQRModal] = useState(false)
@@ -108,22 +101,20 @@ export default function CreatePaymentPage() {
 
   useEffect(() => {
     if (!hasHydrated) return
-    if (isClerkConfigured && !isClerkLoaded) return
-    if (!isAuthenticatedAny) {
+    if (!isAuthenticated) {
       router.replace('/auth/login')
     }
-  }, [hasHydrated, isClerkConfigured, isClerkLoaded, isAuthenticatedAny, router])
+  }, [hasHydrated, isAuthenticated, router])
 
-  const resolveBearerToken = (): Promise<string | null> =>
-    getPreferredBearerToken(getToken)
+  const resolveBearerToken = (): string | null => getPreferredBearerToken()
 
   const onSubmit = async (data: CreatePaymentForm) => {
-    if (!isAuthenticatedAny) {
+    if (!isAuthenticated) {
       toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
       return
     }
 
-    const bearer = await resolveBearerToken()
+    const bearer = resolveBearerToken()
     if (!bearer) {
       toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
       return
@@ -154,7 +145,7 @@ export default function CreatePaymentPage() {
     }
   }
 
-  if (!hasHydrated || (isClerkConfigured && !isClerkLoaded)) {
+  if (!hasHydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fff5f0 0%, #f7f7f6 100%)' }}>
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500" />
@@ -162,7 +153,7 @@ export default function CreatePaymentPage() {
     )
   }
 
-  if (!isAuthenticatedAny) {
+  if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #fff5f0 0%, #f7f7f6 100%)' }}>
         <p className="text-gray-600">Redirigiendo...</p>
@@ -347,7 +338,7 @@ export default function CreatePaymentPage() {
         onRefreshQR={async () => {
           if (!qrData?.paymentData?.amountARS) return
 
-          const bearer = await resolveBearerToken()
+          const bearer = resolveBearerToken()
           if (!bearer) {
             toast.error(t.dashboard.createPayment.errors.mustBeAuthenticated)
             return

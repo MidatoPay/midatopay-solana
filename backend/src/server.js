@@ -104,9 +104,9 @@ app.use('*', (req, res) => {
 
 // Inicializar servidor
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
+   ;
+   ;
+   ;
 });
 
 // Inicializar WebSocket
@@ -117,17 +117,17 @@ startPriceOracle();
 
 // Manejo graceful de cierre
 process.on('SIGTERM', () => {
-  console.log('🛑 Cerrando servidor...');
+   ;
   server.close(() => {
-    console.log('✅ Servidor cerrado correctamente');
+     ;
     process.exit(0);
   });
 });
 
 process.on('SIGINT', () => {
-  console.log('🛑 Cerrando servidor...');
+   ;
   server.close(() => {
-    console.log('✅ Servidor cerrado correctamente');
+     ;
     process.exit(0);
   });
 });

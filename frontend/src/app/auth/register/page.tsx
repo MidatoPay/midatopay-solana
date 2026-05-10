@@ -9,9 +9,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
-// Clerk deshabilitado temporalmente
-// import { useSignUp, useAuth } from '@clerk/nextjs'
-// import { useClerkSafe } from '@/hooks/useClerkSafe'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -19,28 +16,6 @@ import { Input } from '@/components/ui/input'
 import { useAuth as useLocalAuth, useAuthActions, useAuthStore } from '@/store/auth'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { ArrowLeft } from 'lucide-react'
-
-// Google Logo Component  
-const GoogleLogo = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <path
-      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-      fill="#4285F4"
-    />
-    <path
-      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.37-4.52H2.18v2.84A9.95 9.95 0 0012 23z"
-      fill="#34A853"
-    />
-    <path
-      d="M5.63 13.01c-.22-.66-.35-1.36-.35-2.06s.13-1.4.35-2.06V6.05H2.18C1.43 7.44 1 8.97 1 10.5s.43 3.06 1.18 4.45l3.45-2.84z"
-      fill="#FBBC05"
-    />
-    <path
-      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.02 1 2.7 4.63 1.18 9.45l3.45 2.84C5.71 9.22 8.14 5.38 12 5.38z"
-      fill="#EA4335"
-    />
-  </svg>
-);
 
 export default function RegisterPage() {
   const { t } = useLanguage()
@@ -53,21 +28,6 @@ export default function RegisterPage() {
   const { isLoading } = useLocalAuth()
   const error = useAuthStore((state) => state.error)
   const { register: registerUser, clearError } = useAuthActions()
-  // Clerk deshabilitado temporalmente - usando solo registro manual
-  // const { isConfigured: isClerkConfigured } = useClerkSafe()
-  // const clerkHook = useSignUp()
-  // const { isSignedIn: isClerkSignedIn } = useAuth()
-  // const signUp = isClerkConfigured ? clerkHook.signUp : null
-  // const isClerkLoaded = isClerkConfigured ? clerkHook.isLoaded : false
-  const [isSocialLoading, setIsSocialLoading] = useState(false)
-  
-  // Redirección automática deshabilitada - usar solo registro manual
-  // useEffect(() => {
-  //   if (isClerkConfigured && isClerkLoaded && isClerkSignedIn) {
-  //     console.log('✅ Usuario ya autenticado con Clerk, redirigiendo a página de nombre del negocio...')
-  //     router.push('/auth/register/business-name')
-  //   }
-  // }, [isClerkConfigured, isClerkLoaded, isClerkSignedIn, router])
 
   // Esquema completo para validación final
   const registerSchema = z.object({
@@ -97,7 +57,6 @@ export default function RegisterPage() {
     register,
     handleSubmit,
     formState: { errors },
-    watch,
     reset,
   } = useForm<RegisterForm | PasswordForm>({
     resolver: zodResolver(registerStep === 'password' ? passwordSchema : registerSchema),
@@ -109,9 +68,6 @@ export default function RegisterPage() {
       reset() // Limpiar el formulario al cambiar al paso de password
     }
   }, [registerStep, reset])
-  
-  // Observar los valores del formulario para debugging
-  const formValues = watch()
 
   const handleBasicSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -139,13 +95,7 @@ export default function RegisterPage() {
     clearError()
   }
 
-  // Registro social deshabilitado temporalmente
-  const handleSocialRegister = async (provider: 'apple' | 'google') => {
-    toast('El registro con Google está temporalmente deshabilitado. Por favor, usa el registro manual.')
-  }
-
   const onSubmit = async (data: RegisterForm | PasswordForm) => {
-    console.log('🔄 Iniciando registro...', { data, basicData, registerStep })
     try {
       clearError()
       
@@ -160,15 +110,11 @@ export default function RegisterPage() {
         email: basicData.email
       }
       
-      console.log('📤 Enviando datos al backend:', finalData)
-      
       await registerUser(finalData)
       
-      console.log('✅ Registro exitoso, redirigiendo al dashboard...')
       toast.success(t.auth.register.accountCreated)
       router.push('/dashboard')
     } catch (error) {
-      console.error('❌ Error en registro:', error)
       const errorMessage = error instanceof Error ? error.message : t.auth.register.errors.registering
       toast.error(errorMessage)
     }
@@ -282,8 +228,6 @@ export default function RegisterPage() {
 
             {registerStep === 'password' && (
               <form onSubmit={handleSubmit(onSubmit, (errors) => {
-                console.error('❌ Errores de validación:', errors)
-                console.log('📊 Datos del formulario:', formValues)
                 if (Object.keys(errors).length > 0) {
                   toast.error('Por favor, completa todos los campos correctamente')
                 }
@@ -435,17 +379,6 @@ export default function RegisterPage() {
                     fontWeight: '500',
                     cursor: isLoading ? 'not-allowed' : 'pointer'
                   }}
-                  onClick={(e) => {
-                    console.log('🖱️ Botón Create Account clickeado')
-                    console.log('📊 Estado del formulario:', {
-                      isLoading,
-                      errors,
-                      basicData,
-                      formValues,
-                      hasPassword: !!formValues?.password,
-                      hasConfirmPassword: !!formValues?.confirmPassword
-                    })
-                  }}
                 >
                   {isLoading ? (
                     <>
@@ -458,52 +391,6 @@ export default function RegisterPage() {
                 </Button>
               </form>
             )}
-
-            {/* Temporalmente deshabilitado - usar registro manual */}
-            {/* {registerStep === 'basic' && (
-              <>
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span 
-                      style={{ 
-                        backgroundColor: '#FFFFFF', 
-                        color: '#8B8B8B',
-                        fontFamily: 'Kufam, sans-serif'
-                      }} 
-                      className="px-4"
-                    >
-                      {t.auth.register.orSignUpWith}
-                    </span>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={() => handleSocialRegister('google')}
-                  className="w-full h-12 rounded-lg border border-gray-200 flex items-center justify-center gap-3 mb-3"
-                  disabled={isSocialLoading}
-                  style={{ 
-                    backgroundColor: '#FFFFFF',
-                    color: '#2C2C2C',
-                    fontFamily: 'Kufam, sans-serif',
-                    fontSize: '16px',
-                    fontWeight: '500'
-                  }}
-                >
-                  {isSocialLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <GoogleLogo size={20} />
-                      {t.auth.register.continueWithGoogle}
-                    </>
-                  )}
-                </Button>
-              </>
-            )} */}
 
             <div className="mt-8 text-center">
               <p style={{ color: '#8B8B8B', fontFamily: 'Kufam, sans-serif', fontSize: '14px' }}>

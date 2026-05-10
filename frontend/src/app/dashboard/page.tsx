@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { useUserProfile } from '@/hooks/useUserProfile'
-import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import DashboardLayout from '@/components/DashboardLayout'
 import { QrCode, Wallet, History, Settings } from 'lucide-react'
 import Link from 'next/link'
@@ -36,7 +35,6 @@ type CryptoOverviewData = {
 export default function DashboardPage() {
   const { t } = useLanguage()
   const { user, isLoading: profileLoading, error: profileError, needsWallet, reloadProfile } = useUserProfile()
-  const { isSignedIn, isLoaded: isClerkAuthLoaded, getToken } = useClerkAuth()
   const jwtToken = useAuthStore((s) => s.token)
   const isJwtAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [cryptoOverview, setCryptoOverview] = useState<CryptoOverviewData | null>(null)
@@ -48,7 +46,7 @@ export default function DashboardPage() {
     ;(async () => {
       setCryptoLoading(true)
       try {
-        const bearer = await getPreferredBearerToken(getToken)
+        const bearer = getPreferredBearerToken()
         const json = await midatoPayAPI.getMerchantCryptoOverview(bearer ?? undefined)
         if (cancelled || !json?.success || !json.data) return
         setCryptoOverview(json.data as CryptoOverviewData)
@@ -62,7 +60,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [user?.walletAddress, profileLoading, isClerkAuthLoaded, isSignedIn, getToken, jwtToken, isJwtAuthenticated])
+  }, [user?.walletAddress, profileLoading, jwtToken, isJwtAuthenticated])
 
   // NO redirigir a onboarding - el usuario puede crear wallet directamente desde el dashboard
   // useEffect(() => {

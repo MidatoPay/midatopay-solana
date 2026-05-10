@@ -9,7 +9,6 @@ import DashboardLayout from '@/components/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { useAuth as useClerkAuth } from '@clerk/nextjs'
 import { useAuthStore } from '@/store/auth'
 
 function isEvmAddress(address: string) {
@@ -30,7 +29,6 @@ const font = { fontFamily: 'Kufam, sans-serif' } as const
 export default function BilleteraPage() {
   const { user, isLoading: profileLoading, reloadProfile } = useUserProfile()
   const { t } = useLanguage()
-  const { getToken, isSignedIn, isLoaded: isClerkAuthLoaded } = useClerkAuth()
   const jwtToken = useAuthStore(s => s.token)
   const isJwtAuthenticated = useAuthStore(s => s.isAuthenticated)
 
@@ -44,20 +42,15 @@ export default function BilleteraPage() {
     isLoading: true,
   })
 
-  const getBearerToken = async (): Promise<string | null> => {
+  const getBearerToken = (): string | null => {
     if (jwtToken && isJwtAuthenticated) return jwtToken
-    if (!isClerkAuthLoaded || !isSignedIn) return null
-    try {
-      return await getToken()
-    } catch {
-      return null
-    }
+    return null
   }
 
   const handleCreateWallet = async () => {
     try {
       setCreatingWallet(true)
-      const token = await getBearerToken()
+      const token = getBearerToken()
       if (!token) {
         throw new Error('No se pudo obtener el token de autenticación')
       }
@@ -93,7 +86,7 @@ export default function BilleteraPage() {
 
       if (isAcceptedWalletAddress(walletAddress)) {
         const label = isEvmAddress(walletAddress) ? 'EVM' : 'Solana'
-        console.log(`Wallet obtenida desde BD (${label}):`, walletAddress)
+         
         setInvalidStoredAddress(false)
         setMerchantWallet({
           isConnected: true,

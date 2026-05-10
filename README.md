@@ -32,8 +32,8 @@ The product ships **multi-language** from day one so owners and staff can run th
 
 ### 1. Sign up & sign in
 
-- Merchants can register and log in with **Clerk** (e.g. Google) or **email/password** (JWT), depending on deployment.
-- The backend **creates or links** a merchant profile (`User` in PostgreSQL) on first authenticated access.
+- Merchants **register and log in with email and password**. The API issues a **JWT**; the frontend stores the session (e.g. secure cookie / client store) and sends `Authorization: Bearer …` on protected routes.
+- On registration, the backend **creates** a merchant profile (`User` in PostgreSQL).
 
 ### 2. Wallet (Solana)
 
@@ -65,7 +65,7 @@ The **on-chain settlement** uses the **oracle-backed USDC** leg for the **Solana
 
 ### 6. Settings
 
-- Merchants can edit **business name** and **phone**; **email** is tied to the auth provider.
+- Merchants can edit **business name** and **phone**; **email** is the account identifier set at registration.
 
 ---
 
@@ -75,8 +75,8 @@ The **on-chain settlement** uses the **oracle-backed USDC** leg for the **Solana
 |--------|------|
 | **Solana L1** | Settlement on **Solana** in **USDC**, fast confirmations. |
 | **Anchor programs** | **`dynamic_fx_oracle`**: stores **ARS per 1 USDC** (human price + decimals) for the configured mint. **`payment_gateway`**: ties payments to the oracle and merchant-side vault logic. |
-| **Backend (Node.js)** | Auth (**Clerk + JWT hybrid**), **Prisma/Postgres**, **QR generation**, **oracle reads**, dashboard data, and **transaction indexing**. |
-| **Frontend (Next.js 14)** | Merchant dashboard, **QR modal**, **i18n** (ES / EN / IT / PT / **中文**), Clerk integration. |
+| **Backend (Node.js)** | Auth (**JWT**), **Prisma/Postgres**, **QR generation**, **oracle reads**, dashboard data, and **transaction indexing**. |
+| **Frontend (Next.js 14)** | Merchant dashboard, **QR modal**, **i18n** (ES / EN / IT / PT / **中文**). |
 
 High-level payment flow:
 
@@ -104,7 +104,7 @@ High-level payment flow:
 | Token | **USDC** on Solana, mint from `SOLANA_USDC_MINT` |
 | API | **Node.js + Express** |
 | DB | **PostgreSQL** + **Prisma** |
-| Auth | **Clerk** + legacy **JWT** (hybrid middleware) |
+| Auth | **JWT** (email/password; Express middleware validates bearer tokens) |
 | Web | **Next.js 14**, React, Tailwind |
 
 ---
@@ -115,10 +115,10 @@ Configure at least:
 
 - **Database**: `DATABASE_URL`
 - **Solana**: `SOLANA_RPC_URL`, `SOLANA_CLUSTER`, `SOLANA_USDC_MINT`, program IDs, admin/key material as required by your deployment
-- **Auth**: `JWT_SECRET` (email users), `CLERK_*` keys (social login)
+- **Auth**: `JWT_SECRET` (required for signing and verifying tokens)
 - **Oracle / programs**: values for your Solana deployment (see `backend/env.example`).
 
-See `backend/env.example` and `frontend/.env.local` patterns in the repo for concrete variable names.
+See `backend/env.example`, `frontend/.env.local`, and `frontend/.env.production` (or your root `.env` used by Docker Compose) for concrete variable names.
 
 ---
 
@@ -127,7 +127,7 @@ See `backend/env.example` and `frontend/.env.local` patterns in the repo for con
 ```bash
 # Backend
 cd backend && npm install
-# Set .env (DATABASE_URL, Solana, Clerk, …)
+# Set .env (DATABASE_URL, Solana, JWT_SECRET, …)
 npx prisma migrate deploy   # or migrate dev in development
 npm start
 

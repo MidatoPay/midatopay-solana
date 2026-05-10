@@ -11,21 +11,10 @@ const api = axios.create({
   },
 })
 
-// Interceptor para agregar token de autenticación (Clerk o JWT tradicional)
+// Interceptor: JWT en localStorage (Zustand persist)
 api.interceptors.request.use(
   async (config) => {
     if (typeof window !== 'undefined') {
-      // Intentar obtener token de Clerk primero
-      try {
-        // Verificar si Clerk está disponible
-        const { useUser } = await import('@clerk/nextjs')
-        // Esto no funcionará aquí porque no podemos usar hooks en un interceptor
-        // En su lugar, usaremos una función helper
-      } catch {
-        // Clerk no disponible, continuar con JWT tradicional
-      }
-
-      // Intentar obtener token JWT tradicional
       const authData = localStorage.getItem('auth-storage')
       if (authData) {
         try {

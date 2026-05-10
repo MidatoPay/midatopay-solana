@@ -111,14 +111,14 @@ async function updatePrices() {
   try {
     const priceData = await getCurrentPrice("USDC", "ARS");
     const label = isSyncEnabled() ? "(cadena; alimentada por CriptoYa si el sync OK)" : "(cadena)";
-    console.log(`Precio USDC/ARS ${label}: ${priceData.price}`);
+     ;
   } catch (error) {
     console.error("Error actualizando precio desde Solana:", error.message);
   }
 }
 
 function startPriceOracle() {
-  console.log("Iniciando oráculo de precios Solana/Anchor...");
+   ;
   if (isSyncEnabled()) {
     console.log(
       "CriptoYa → oracle on-chain ACTIVO (CRIPTOYA_ORACLE_SYNC_ENABLED=true). Intervalo mínimo entre txs:",

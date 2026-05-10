@@ -12,7 +12,7 @@ function initializeWebSocket(server) {
   });
 
   wss.on('connection', (ws, req) => {
-    console.log('🔌 Nueva conexión WebSocket');
+     ;
     
     // Autenticación del WebSocket
     const token = req.url.split('token=')[1];
@@ -37,7 +37,7 @@ function initializeWebSocket(server) {
       });
 
       ws.on('close', () => {
-        console.log(`🔌 Usuario ${userId} desconectado`);
+         ;
         userConnections.delete(userId);
       });
 
@@ -61,7 +61,7 @@ function initializeWebSocket(server) {
     }
   });
 
-  console.log('✅ Servidor WebSocket iniciado en /ws');
+   ;
 }
 
 // Enviar mensaje a un usuario específico
@@ -87,7 +87,7 @@ function sendToUsers(userIds, message) {
 
 // Manejar mensajes del WebSocket
 function handleWebSocketMessage(userId, data) {
-  console.log(`📨 Mensaje de usuario ${userId}:`, data);
+   ;
   
   switch (data.type) {
     case 'ping':
@@ -109,7 +109,7 @@ function handleWebSocketMessage(userId, data) {
       break;
       
     default:
-      console.log('Tipo de mensaje no reconocido:', data.type);
+       ;
   }
 }
 

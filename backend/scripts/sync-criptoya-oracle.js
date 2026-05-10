@@ -10,7 +10,7 @@ const { syncOracleFromCriptoYa } = require("../src/services/criptoYaOracleSync")
 
 (async () => {
   const result = await syncOracleFromCriptoYa();
-  console.log(JSON.stringify(result, null, 2));
+   
   if (result.skipped) {
     process.exit(0);
   }

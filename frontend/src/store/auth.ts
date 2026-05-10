@@ -197,7 +197,7 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       setUser: (user: User) => {
-        // Clerk y el perfil backend rellenan el usuario sin pasar por login JWT
+        // El perfil backend puede rellenar el usuario sin pasar por login JWT
         set({ user, isAuthenticated: true })
       },
 

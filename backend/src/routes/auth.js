@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const prisma = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
-const { authenticateHybrid } = require('../middleware/clerkAuth');
+const { authenticateHybrid } = require('../middleware/clerkAuth'); // = JWT (authenticateToken)
 
 const router = express.Router();
 
@@ -144,7 +144,7 @@ router.post('/login', [
   }
 });
 
-// Obtener perfil del usuario autenticado (soporta Clerk y JWT)
+// Obtener perfil del usuario autenticado (JWT)
 router.get('/profile', authenticateHybrid, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -177,7 +177,7 @@ router.get('/profile', authenticateHybrid, async (req, res, next) => {
   }
 });
 
-// Actualizar perfil (soporta Clerk y JWT)
+// Actualizar perfil (JWT)
 router.put('/profile', authenticateHybrid, [
   body('name').optional().trim().isLength({ min: 2, max: 120 }),
   body('phone')
@@ -278,7 +278,7 @@ router.post('/create-wallet', authenticateHybrid, async (req, res, next) => {
     // Guardar wallet en la base de datos
     const user = await WalletService.saveWallet(req.user.id, walletData);
 
-    console.log('✅ Wallet creada automáticamente para usuario:', user.email);
+     ;
 
     res.json({
       message: 'Wallet creada exitosamente',

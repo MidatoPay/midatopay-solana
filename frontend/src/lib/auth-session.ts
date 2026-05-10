@@ -1,23 +1,8 @@
 import { useAuthStore } from '@/store/auth'
 
-/**
- * Token para APIs: prioriza JWT (email/contraseña) sobre Clerk.
- * Evita mezclar cuentas cuando siguen logueados en Google pero usan otra cuenta por JWT.
- */
-export async function getPreferredBearerToken(
-  getClerkToken?: () => Promise<string | null>
-): Promise<string | null> {
+/** Bearer JWT de la sesión email/contraseña (Zustand + localStorage). */
+export function getPreferredBearerToken(): string | null {
   const { token, isAuthenticated } = useAuthStore.getState()
-  if (token && isAuthenticated) {
-    return token
-  }
-  if (getClerkToken) {
-    try {
-      const t = await getClerkToken()
-      return t ?? null
-    } catch {
-      return null
-    }
-  }
+  if (token && isAuthenticated) return token
   return null
 }
